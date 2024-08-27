@@ -1,2 +1,2 @@
 # BlandNoodles
-Unity NOODLES Client (Alpha)
+Magic Leap 2 Unity NOODLES Client (Alpha)
