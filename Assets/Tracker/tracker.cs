@@ -17,17 +17,39 @@ public class MarkerTracking : MonoBehaviour
     // the object that will be instantiated on the marker
     // public GameObject trackerObject;
 
+    int frame_count = 10;
+
+    Queue<Vector3> positions = new Queue<Vector3>();
+
     private async void Start()
     {
         MLMarkerTracker.OnMLMarkerTrackerResultsFound += OnTrackerResultsFound;
 
+        MLMarkerTracker.ArucoDictionaryName d = MLMarkerTracker.ArucoDictionaryName.DICT_5X5_100;
+
+        MLMarkerTracker.Profile profile = MLMarkerTracker.Profile.Accuracy;
+
         // create a tracker settings object with variables defined above
-        //MLMarkerTracker.TrackerSettings trackerSettings = MLMarkerTracker.TrackerSettings.Create(true, MLMarkerTracker.MarkerType.QR, qrCodeMarkerSize);
+        MLMarkerTracker.TrackerSettings trackerSettings = MLMarkerTracker.TrackerSettings.Create(true, MLMarkerTracker.MarkerType.QR, qrCodeMarkerSize, d, 0.1f, profile);
 
         // start marker tracking with tracker settings object
-        //await MLMarkerTracker.SetSettingsAsync(trackerSettings);
+        await MLMarkerTracker.SetSettingsAsync(trackerSettings);
 
         await MLMarkerTracker.StartScanningAsync();
+    }
+
+    private Vector3 compute_average_position() {
+        if (positions.Count == 0) {
+            return Vector3.zero;
+        }
+
+        Vector3 sum = Vector3.zero;
+
+        foreach (Vector3 p in positions) {
+            sum += p;
+        }
+
+        return sum / positions.Count;
     }
 
     // when the marker is detected...
@@ -43,7 +65,13 @@ public class MarkerTracking : MonoBehaviour
             return;
         }
 
-        this.transform.SetPositionAndRotation(data.Pose.position, data.Pose.rotation * Quaternion.Euler(-90,0,180));
+        this.positions.Enqueue(data.Pose.position);
+
+        if (positions.Count > frame_count) {
+            positions.Dequeue();
+        }
+
+        this.transform.SetPositionAndRotation(data.Pose.position + new Vector3(2.64f, -1.68f, 1.06f), data.Pose.rotation * Quaternion.Euler(-180,0,180));
         //this.transform.position = data.Pose.position;
         /*
         if (_markers.ContainsKey(id)) {
