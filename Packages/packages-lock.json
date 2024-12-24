@@ -28,7 +28,7 @@
       "url": "https://registry.npmjs.org"
     },
     "com.unity.burst": {
-      "version": "1.8.17",
+      "version": "1.8.18",
       "depth": 1,
       "source": "registry",
       "dependencies": {
@@ -38,7 +38,7 @@
       "url": "https://packages.unity.com"
     },
     "com.unity.collab-proxy": {
-      "version": "2.4.4",
+      "version": "2.5.2",
       "depth": 0,
       "source": "registry",
       "dependencies": {},
@@ -59,7 +59,7 @@
       "url": "https://packages.unity.com"
     },
     "com.unity.ide.rider": {
-      "version": "3.0.31",
+      "version": "3.0.34",
       "depth": 0,
       "source": "registry",
       "dependencies": {
@@ -84,7 +84,7 @@
       "url": "https://packages.unity.com"
     },
     "com.unity.inputsystem": {
-      "version": "1.7.0",
+      "version": "1.11.2",
       "depth": 1,
       "source": "registry",
       "dependencies": {
@@ -95,6 +95,13 @@
     "com.unity.mathematics": {
       "version": "1.2.6",
       "depth": 1,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://packages.unity.com"
+    },
+    "com.unity.mobile.android-logcat": {
+      "version": "1.4.3",
+      "depth": 0,
       "source": "registry",
       "dependencies": {},
       "url": "https://packages.unity.com"
@@ -158,7 +165,7 @@
       "url": "https://packages.unity.com"
     },
     "com.unity.textmeshpro": {
-      "version": "3.0.6",
+      "version": "3.0.7",
       "depth": 0,
       "source": "registry",
       "dependencies": {
@@ -250,7 +257,7 @@
       "url": "https://packages.unity.com"
     },
     "com.unity.xr.legacyinputhelpers": {
-      "version": "2.1.10",
+      "version": "2.1.11",
       "depth": 2,
       "source": "registry",
       "dependencies": {
