@@ -203,7 +203,7 @@ public class NOODLESRoot : MonoBehaviour
     /// </summary>
     /// <param name="arr">CBOR message array to handle</param>
     void ParseMessageArray(CBORObject arr) {
-        Debug.Log("Parse message array: " + arr.Count.ToString());
+        //Debug.Log("Parse message array: " + arr.Count.ToString());
         if (arr.Count % 2 != 0) {
             Debug.LogError("Malformed message array");
             return;
@@ -217,7 +217,7 @@ public class NOODLESRoot : MonoBehaviour
             // content is next
             var content = arr[cursor+1];
 
-            Debug.Log(string.Format("Message: {0} => {1}", id, content));
+            //Debug.Log(string.Format("Message: {0} => {1}", id, content));
 
             try
             {
@@ -252,13 +252,27 @@ public class NOODLESRoot : MonoBehaviour
                 return;
             case 34:
                 // method reply
+                Debug.Log("Got reply " + content.ToString());
                 var uuid = Guid.Parse(content["invoke_id"].AsString());
-                if (!message_response.TryGetValue(uuid, out MessageReplyDelegate to_call)) {
+                if (!message_response.Remove(uuid, out MessageReplyDelegate to_call)) {
                     Debug.LogWarning("Server sending response to message we did not send.");
                     return;
                 }
 
-                to_call?.Invoke(content);
+                if (to_call == null) {
+                    Debug.Log("Delegate is null!");
+                    return;
+                }
+
+                Debug.Log("running delegate " + to_call);
+
+                try {
+                    to_call.Invoke(content);
+                } catch (Exception e) {
+                    Debug.Log("Failed to run method");
+                    Debug.LogException(e);
+                }
+                
 
                 return;
             case 35:
@@ -398,7 +412,20 @@ public class NOODLESRoot : MonoBehaviour
         ConsumeMessages();
     }
 
-    public void invoke_method(NooID methodid, NooID entityid, List<CBORObject> args, MessageReplyDelegate del) {
+    public void invoke_method_by_name(String name, List<CBORObject> args, MessageReplyDelegate del) {
+        Debug.Log("INVOKE METHOD BY NAME: " + del.Method);
+        var component_and_id = components_pack.GetNoodlesComponentByName(ComponentType.Method, name);
+
+        if (component_and_id != null)
+        {
+            var id = component_and_id.Value.Item2;
+            invoke_method(id, null, args, del);
+        }
+        
+    }
+
+    public void invoke_method(NooID methodid, NooID? entityid, List<CBORObject> args, MessageReplyDelegate del) {
+        Debug.Log("INVOKE METHOD IMPL");
         // omit check to see if method is on the entity. hopefully we just dont do that.
 
         var nid = Guid.NewGuid();
@@ -546,10 +573,10 @@ class Introduction : IMessage {
 class InvokeMethodMessage : IMessage {
     Guid invoke_id;
     public NooID method_id;
-    public NooID entity_id;
+    public NooID? entity_id;
     public List<CBORObject> args;
 
-    public InvokeMethodMessage(Guid iid, NooID mid, NooID eid, List<CBORObject> arguments) {
+    public InvokeMethodMessage(Guid iid, NooID mid, NooID? eid, List<CBORObject> arguments) {
         invoke_id = iid;
         method_id = mid;
         entity_id = eid;
@@ -562,14 +589,19 @@ class InvokeMethodMessage : IMessage {
     }
 
     public CBORObject ToCBOR() {
-        return CBORObject
+        var ret = CBORObject
             .NewMap()
             .Add("invoke_id", invoke_id.ToString())
             .Add("method_id", method_id.ToCBOR())
-            .Add("context", CBORObject.NewMap()
-                                .Add("entity", entity_id.ToCBOR())
-                )
             .Add("args", args);
+
+        if (entity_id != null) {
+            ret.Add("context", CBORObject.NewMap()
+                                .Add("entity", entity_id.Value.ToCBOR())
+                );
+        }
+
+        return ret;
     }
 }
 
@@ -590,6 +622,10 @@ public interface INoodlesComponent {
     abstract void OnCreate(NOODLESRoot root, CBORObject content);
     abstract void OnDelete(NOODLESRoot root);
     virtual void OnUpdate(NOODLESRoot root, CBORObject content) {}
+
+    virtual String? GetName() {
+        return null;
+    }
 }
 
 public class BlankComponent : INoodlesComponent {
@@ -601,7 +637,7 @@ public class BlankComponent : INoodlesComponent {
     }
 
     public void OnUpdate(NOODLESRoot root, CBORObject content) {
-        Debug.Log("Updating component: ");
+        //Debug.Log("Updating component: ");
     }
 }
 
@@ -638,6 +674,34 @@ public class ComponentList {
         {
             return ret;
         }
+        return null;
+    }
+
+    /// <summary>
+    /// Obtain a component by Name
+    /// </summary>
+    /// <param name="name">Name of component</param>
+    /// <returns>Requested component, or null if ID was not found</returns>
+    public (INoodlesComponent, NooID)? GetByName(String name) {
+        foreach (var component_kv in component_collection) {
+            var maybe_comp_name = component_kv.Value.GetName();
+
+            string comp_name = "";
+
+            if (maybe_comp_name != null)
+            {
+                comp_name = maybe_comp_name;
+            }
+            
+
+            Debug.Log("Check method " + comp_name + " against " + name);
+            
+            if (comp_name == name)
+            {
+                return (component_kv.Value, component_kv.Key);
+            }
+        }
+        Debug.Log("Unable to find method: " + name);
         return null;
     }
 
@@ -684,6 +748,17 @@ public class ComponentPack {
     /// <returns>Component, if found. Null otherwise.</returns>
     public INoodlesComponent? GetNoodlesComponent(ComponentType type, NooID id) {
         return components[(int) type].Get(id);
+    }
+
+    /// <summary>
+    /// Ask for a NOODLES component by ID and Type
+    /// </summary>
+    /// <param name="type">Type of the component you are searching for</param>
+    /// <param name="name">Name of the component</param>
+    /// <returns>Component, if found. Null otherwise.</returns>
+    public (INoodlesComponent, NooID)? GetNoodlesComponentByName(ComponentType type, String name) {
+        var component_list = components[(int) type];
+        return component_list.GetByName(name);
     }
 
     /// <summary>
@@ -744,6 +819,7 @@ static class NooTools {
 
     public static INoodlesComponent MakeNewComponent(ComponentType type) {
         return type switch {
+            ComponentType.Method => new MethodComponent(),
             ComponentType.Buffer => new BufferComponent(),
             ComponentType.BufferView => new BufferViewComponent(),
             ComponentType.Image => new ImageComponent(),
@@ -761,7 +837,7 @@ static class NooTools {
 
     public static string name_from_content(in CBORObject content, in string def) {
         if (content.ContainsKey("name")) {
-            return content["name"].ToString();
+            return content["name"].AsString();
         }
 
         var id = IDFromContent(content);
@@ -890,6 +966,30 @@ static class NooTools {
         };
     }
 }
+
+#region Method
+
+class MethodComponent : INoodlesComponent 
+{
+    string method_name = "UNKNOWN";
+
+    public void OnCreate(NOODLESRoot root, CBORObject content)
+    {
+        method_name = NooTools.name_from_content(content, "Method");
+        Debug.Log("new method " + method_name);
+    }
+
+    public void OnDelete(NOODLESRoot root)
+    {
+        // nothing to do
+    }
+
+    public string? GetName() {
+        return method_name;
+    }
+}
+
+#endregion
 
 
 #region Buffer
@@ -1836,7 +1936,7 @@ class EntityComponent : INoodlesComponent
 
             var position = mat.GetPosition();
             var pre_rotation = mat.rotation;
-            Debug.Log(string.Format("BEFORE {0} {1}", position, pre_rotation));
+            //Debug.Log(string.Format("BEFORE {0} {1}", position, pre_rotation));
 
             // so we have an issue where some mirrored rotations are properly mirroed...but flipped in, say, Y.
             // this is a valid mirrored rotation, but ruins the scene
@@ -1845,7 +1945,7 @@ class EntityComponent : INoodlesComponent
 
             position.z *= -1;
 
-            Debug.Log(string.Format("AFTER {0} {1} {2}", position, rotation, mat.lossyScale));
+            //Debug.Log(string.Format("AFTER {0} {1} {2}", position, rotation, mat.lossyScale));
 
             var tf = managed_object!.transform;
             tf.SetLocalPositionAndRotation(position, rotation);
@@ -1881,15 +1981,13 @@ class EntityComponent : INoodlesComponent
         var meshes = geom_comp.MeshList();
         var materials = geom_comp.MaterialList();
 
-        Debug.Log("Building children " + meshes.Length + " for " + managed_object!.name);
-
-        Debug.Log("Building children " + meshes.Length + " for " + managed_object!.name);
+        //Debug.Log("Building children " + meshes.Length + " for " + managed_object!.name);
 
         for (int i = 0; i < meshes.Length; i++) {
             try {
                 var mesh = meshes[i];
                 var mat  = materials[i];
-                Debug.Log("Adding mesh to subobject: " + mesh);
+                //Debug.Log("Adding mesh to subobject: " + mesh);
                 var sub_obj = new GameObject(string.Format("Submesh {0} for {1}", i, managed_object!.name));
 
                 sub_obj.transform.parent = managed_object!.transform;
@@ -1911,8 +2009,7 @@ class EntityComponent : INoodlesComponent
     }
 
     void ClearChildren() {
-        Debug.Log("Clearing for " + managed_object!.name);
-        Debug.Log("Clearing for " + managed_object!.name);
+        //Debug.Log("Clearing for " + managed_object!.name);
         foreach (var child in sub_objects) {
             GameObject.Destroy(child);
         }
@@ -1922,7 +2019,7 @@ class EntityComponent : INoodlesComponent
     public void OnCreate(NOODLESRoot root, CBORObject content)
     {
         managed_object = new GameObject();
-        Debug.Log("Creating new entity");
+        //Debug.Log("Creating new entity");
         managed_object.name =  NooTools.name_from_content(content, "Entity");
 
         if (!content.ContainsKey("parent")) {
@@ -1935,7 +2032,7 @@ class EntityComponent : INoodlesComponent
     }
 
     public void OnUpdate(NOODLESRoot root, CBORObject content) {
-        Debug.Log("Updating component: ");
+        //Debug.Log("Updating component: ");
 
         CommonUpdate(root, content);
 
@@ -1946,7 +2043,7 @@ class EntityComponent : INoodlesComponent
 
     public void OnDelete(NOODLESRoot root)
     {
-        Debug.Log("Destroying entity");
+        //Debug.Log("Destroying entity");
         GameObject.Destroy(managed_object);
     }
 }

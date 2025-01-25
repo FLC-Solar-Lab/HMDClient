@@ -9,13 +9,13 @@ public class MarkerTracking : MonoBehaviour
 {
     // marker settings
     public float qrCodeMarkerSize; // size of the expected qr code, in meters
-    //private Dictionary<string, GameObject> _markers = new Dictionary<string, GameObject>();
+    private Dictionary<string, GameObject> _markers = new Dictionary<string, GameObject>();
     private readonly ASCIIEncoding _asciiEncoder = new();
-
+    bool found = false;
     public string qrCodeMarkerPrefix; // String of the QR code we should bind to. Will check prefix
 
     // the object that will be instantiated on the marker
-    // public GameObject trackerObject;
+    public GameObject trackerObject;
 
     int frame_count = 10;
 
@@ -38,20 +38,6 @@ public class MarkerTracking : MonoBehaviour
         await MLMarkerTracker.StartScanningAsync();
     }
 
-    private Vector3 compute_average_position() {
-        if (positions.Count == 0) {
-            return Vector3.zero;
-        }
-
-        Vector3 sum = Vector3.zero;
-
-        foreach (Vector3 p in positions) {
-            sum += p;
-        }
-
-        return sum / positions.Count;
-    }
-
     // when the marker is detected...
     private void OnTrackerResultsFound(MLMarkerTracker.MarkerData data)
     {
@@ -65,38 +51,43 @@ public class MarkerTracking : MonoBehaviour
             return;
         }
 
-        this.positions.Enqueue(data.Pose.position);
+        //this.positions.Enqueue(data.Pose.position);
 
-        if (positions.Count > frame_count) {
-            positions.Dequeue();
-        }
+        //if (positions.Count > frame_count) {
+        //    positions.Dequeue();
+        //}
 
-        this.transform.SetPositionAndRotation(data.Pose.position + new Vector3(2.64f, -1.68f, 1.06f), data.Pose.rotation * Quaternion.Euler(-180,0,180));
+        //this.transform.SetPositionAndRotation(data.Pose.position + new Vector3(2.64f, -1.68f, 1.06f), data.Pose.rotation * Quaternion.Euler(-180,0,180));
         //this.transform.position = data.Pose.position;
-        /*
+        //this.transform.SetPositionAndRotation(data.Pose.position, data.Pose.rotation);
+
         if (_markers.ContainsKey(id)) {
-            GameObject marker = _markers[id];
+            //GameObject marker = _markers[id];
 
             // Reposition the marker
             //marker.transform.position = data.Pose.position;
             //marker.transform.rotation = data.Pose.rotation;
         } else {
+            this.transform.SetPositionAndRotation(data.Pose.position, data.Pose.rotation);
+
             //Create an origin marker
             GameObject marker = Instantiate(trackerObject, data.Pose.position, data.Pose.rotation);
-            marker.transform.GetChild(4).gameObject.GetComponent<TextMeshPro>().text = id;
+            marker.transform.GetChild(4).gameObject.GetComponent<TextMeshPro>().text = _markers.Count.ToString();
+            marker.transform.Find("Text").gameObject.GetComponent<TextMeshPro>().text = "Hello";
+
             marker.transform.up = Vector3.up;
             //GameObject tmp = Instantiate(trackerObject, data.Pose.position + new Vector3(0.1f,0.1f,0f), this.transform.rotation);
 
             // Position the marker
             //marker.transform.position = data.Pose.position;
-            marker.transform.rotation = data.Pose.rotation * Quaternion.Euler(-90,0,180);
+            //marker.transform.rotation = data.Pose.rotation * Quaternion.Euler(-90,0,180);
 
-            this.transform.SetPositionAndRotation(data.Pose.position, marker.transform.rotation);
+            //this.transform.SetPositionAndRotation(data.Pose.position, data.Pose.rotation);
             _markers.Add(id, marker);
-        } */
+        } 
 
         // stop scanning after object has been instantiated
-        //_ = MLMarkerTracker.StopScanningAsync();
+        _ = MLMarkerTracker.StopScanningAsync();
 
     }
 }
