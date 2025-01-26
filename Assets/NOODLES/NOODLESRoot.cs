@@ -435,6 +435,10 @@ public class NOODLESRoot : MonoBehaviour
         SendMessage(new InvokeMethodMessage(nid, methodid, entityid, args));
 
     }
+
+    public System.Net.WebSockets.WebSocketState serverConnection() {
+        return ws.State;
+    }
 }
 
 /// <summary>
