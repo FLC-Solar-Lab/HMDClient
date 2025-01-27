@@ -169,6 +169,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   trackedObject: {fileID: 1533458883}
+  aruco_id: 0
+  vrpn_id: origin
 --- !u!1001 &61763479
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -851,6 +853,16 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 39945711}
     m_Modifications:
+    - target: {fileID: 115916645629676530, guid: 068f16b9fa64443fa8700a911c87626e,
+        type: 3}
+      propertyPath: m_fontSize
+      value: 52
+      objectReference: {fileID: 0}
+    - target: {fileID: 115916645629676530, guid: 068f16b9fa64443fa8700a911c87626e,
+        type: 3}
+      propertyPath: m_fontSizeBase
+      value: 52
+      objectReference: {fileID: 0}
     - target: {fileID: 3790276207035758998, guid: 068f16b9fa64443fa8700a911c87626e,
         type: 3}
       propertyPath: m_Name
