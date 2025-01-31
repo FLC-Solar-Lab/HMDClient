@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Text;
 using TMPro;
@@ -82,27 +83,8 @@ public class TripleTracker : MonoBehaviour
                 trackedObject.transform.position = data.Pose.position;
                 trackedObject.transform.rotation = data.Pose.rotation * Quaternion.Euler(-90,0,180);
             
-                if (_controllerActions.Trigger.ReadValue<float>()==0)
-                {
-                    var n_root = transform.Find("NoodlesRoot");
-
-                    if (false && n_root) {
-                        Debug.Log("OriginTracker: Kicking off transform request");
-
-                        var args = new List<CBORObject>();
-                        args.Add(CBORObject.FromObject(vrpn_id));
-
-                        var comp = n_root.gameObject.GetComponent<NOODLESRoot>();
-
-                        if (comp != null)
-                        {
-                            Debug.Log("OrignTracker: INVOKE");
-                            comp.invoke_method_by_name("get_transform",  args, OnRequestReply);
-                        }                        
-                    }
-                    
-                    Debug.Log("OriginTracker: finished originFinding");
-                }
+                //if (_controllerActions.Trigger.ReadValue<float>()==0)
+                
             }
         }           
         // stop scanning after object has been instantiated
@@ -126,33 +108,76 @@ public class TripleTracker : MonoBehaviour
         trackedObject.transform.GetChild(4).gameObject.SetActive(false);
         _originFinding = false;
 
+        try 
+        {
+            var n_root = GameObject.FindWithTag("NoodlesRootItem");
+
+            if (n_root) {
+                Debug.Log("OriginTracker: Kicking off transform request");
+
+                var args = new List<CBORObject>();
+                args.Add(CBORObject.FromObject(vrpn_id));
+
+                var comp = n_root.GetComponent<NOODLESRoot>();
+
+                if (comp != null)
+                {
+                    Debug.Log("OrignTracker: INVOKE");
+                    comp.invoke_method_by_name("get_transform",  args, OnRequestReply);
+                }                        
+            }
+            
+            Debug.Log("OriginTracker: finished originFinding");
+        }
+        catch (Exception e) 
+        {
+            Debug.LogException(e);
+        }
+
     }
 
     private void OnRequestReply(CBORObject reply) {
         Debug.Log("OriginTracker: RQ REPLY" + reply.ToString());
 
+        var transform_array = reply["result"];
+
 
         var offset = new Vector3(
-            reply[0].ToObject<float>(),
-            reply[1].ToObject<float>(), 
-            - reply[2].ToObject<float>()
+            transform_array[0].ToObject<float>(),
+            transform_array[1].ToObject<float>(), 
+            -transform_array[2].ToObject<float>()
         );
 
         var rotation = new Quaternion(
-            -reply[3].ToObject<float>(),
-            -reply[4].ToObject<float>(), 
-            reply[5].ToObject<float>(),
-            reply[6].ToObject<float>()
+            transform_array[3].ToObject<float>(),
+            transform_array[4].ToObject<float>(), 
+            -transform_array[5].ToObject<float>(),
+            -transform_array[6].ToObject<float>()
         );
 
-        var n_root = transform.Find("NoodlesRoot");
+        var n_root = GameObject.FindWithTag("NoodlesRootItem");
+        var n_room_offset = GameObject.FindWithTag("OriginOffsetItem");
+        var indicator = GameObject.FindWithTag("CoordinateIndicator");
 
-        if (n_root == null)
+
+
+        if (n_root == null || n_room_offset == null || indicator == null)
         {
-            Debug.Log("Unable to find root!");
+            Debug.Log("Unable to find root or root offset nodes, we cannot properly set the origin for this client!");
             return;
         }
 
-        n_root.SetLocalPositionAndRotation(offset, rotation);
+        n_root.transform.localPosition = offset;
+        n_room_offset.transform.localRotation = rotation;
+
+        // set the indicator as the inverse of this transform
+        var tf_a = n_root.transform;
+        var tf_b = transform;
+
+        var indicator_pos = tf_a.InverseTransformPoint(tf_b.position);
+        var indicator_rot = Quaternion.Inverse(tf_a.rotation) * tf_b.rotation;
+
+        indicator.transform.SetLocalPositionAndRotation(indicator_pos, indicator_rot);
+
     }
 }

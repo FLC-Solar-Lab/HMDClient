@@ -1942,7 +1942,7 @@ class EntityComponent : INoodlesComponent
             var pre_rotation = mat.rotation;
             //Debug.Log(string.Format("BEFORE {0} {1}", position, pre_rotation));
 
-            // so we have an issue where some mirrored rotations are properly mirroed...but flipped in, say, Y.
+            // so we have an issue where some mirrored rotations are properly mirrored...but flipped in, say, Y.
             // this is a valid mirrored rotation, but ruins the scene
 
             var rotation = new Quaternion(-pre_rotation.x, -pre_rotation.y, pre_rotation.z, pre_rotation.w);
@@ -1995,7 +1995,7 @@ class EntityComponent : INoodlesComponent
                 var sub_obj = new GameObject(string.Format("Submesh {0} for {1}", i, managed_object!.name));
 
                 sub_obj.transform.parent = managed_object!.transform;
-                // I have no idea why I have to do this.
+                // I have no idea why I have to do this. But if I don't they are set to noise
                 sub_obj.transform.SetLocalPositionAndRotation(
                     new Vector3(0,0,0), 
                     new Quaternion()
