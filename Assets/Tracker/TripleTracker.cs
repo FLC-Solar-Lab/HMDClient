@@ -149,8 +149,12 @@ public class TripleTracker : MonoBehaviour
             try 
             {
                 var n_root = GameObject.FindWithTag("NoodlesRootItem");
-                var world_pos = n_root.transform.TransformPoint(controllerPosition);
-                world_pos[2] = -world_pos[2];
+                //var world_pos = n_root.transform.TransformPoint(controllerPosition);
+                var forward_pos = controllerRotation * Vector3.forward + controllerPosition;
+                var root_offset = forward_pos - n_root.transform.position ;
+                var world_pos = new Vector3(root_offset[2], 
+                                            root_offset[1],
+                                            root_offset[0]);
 
                 if (n_root) {
                     var args = new List<CBORObject>();
