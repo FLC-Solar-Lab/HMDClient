@@ -43,6 +43,8 @@ public class TripleTracker : MonoBehaviour
        _controllerActions = new MagicLeapInputs.ControllerActions(_magicLeapInputs);
        _controllerActions.Trigger.started += HandleOnTriggerPull;
        _controllerActions.Trigger.canceled += HandleOnTriggerRelease;
+       //_controllerActions.Bumper.performed += HandleOnBumper;
+       _controllerActions.Bumper.canceled += HandleOnBumperRelease;
 
         trackedObject.SetActive(true);
         trackedObject.transform.GetChild(4).gameObject.GetComponent<TextMeshPro>().text = "Release Trigger when aligned with the FLC ORIGIN";
@@ -136,6 +138,65 @@ public class TripleTracker : MonoBehaviour
 
     }
 
+    private void Update()
+    {
+        if (_controllerActions.Bumper.IsPressed())
+        {
+            var controllerPosition = _controllerActions.Position.ReadValue<Vector3>();
+            var controllerRotation = _controllerActions.Rotation.ReadValue<Quaternion>();
+            Debug.Log("Controller: " + controllerPosition + " " + controllerRotation);
+                
+            try 
+            {
+                var n_root = GameObject.FindWithTag("NoodlesRootItem");
+                var world_pos = n_root.transform.TransformPoint(controllerPosition);
+                world_pos[2] = -world_pos[2];
+
+                if (n_root) {
+                    var args = new List<CBORObject>();
+                    args.Add(CBORObject.FromObject(world_pos));
+
+                    var comp = n_root.GetComponent<NOODLESRoot>();
+
+                    if (comp != null)
+                    {
+                        Debug.Log("OrignTracker: INVOKE move");
+                        comp.invoke_method_by_name("move_object",  args, NoReply);
+                    }                        
+                }
+            }
+            catch (Exception e) 
+            {
+                Debug.LogException(e);
+            }
+        }
+    }
+    private void HandleOnBumperRelease(InputAction.CallbackContext obj)
+    {
+        bool bumperDown = obj.ReadValueAsButton();
+        Debug.Log("The Bumper released " + bumperDown);
+
+        try 
+        {
+            var n_root = GameObject.FindWithTag("NoodlesRootItem");
+
+            if (n_root) {
+                var args = new List<CBORObject>();
+                var comp = n_root.GetComponent<NOODLESRoot>();
+
+                if (comp != null)
+                {
+                    Debug.Log("OrignTracker: INVOKE move");
+                    comp.invoke_method_by_name("object_moved",  args, NoReply);
+                }                        
+            }
+        }
+        catch (Exception e) 
+        {
+            Debug.LogException(e);
+        }
+    }
+
     private void OnRequestReply(CBORObject reply) {
         Debug.Log("OriginTracker: RQ REPLY" + reply.ToString());
 
@@ -179,5 +240,8 @@ public class TripleTracker : MonoBehaviour
 
         indicator.transform.SetLocalPositionAndRotation(indicator_pos, indicator_rot);
 
+    }
+
+    private void NoReply(CBORObject reply) {
     }
 }
