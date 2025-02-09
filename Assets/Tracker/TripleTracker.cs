@@ -72,11 +72,11 @@ public class TripleTracker : MonoBehaviour
                 id = data.ArucoData.Id.ToString();
             }
 
-            Debug.Log("OriginTracker Detected " + id + " " + _controllerActions.Trigger.ReadValue<float>());
+            //Debug.Log("OriginTracker Detected " + id + " " + _controllerActions.Trigger.ReadValue<float>());
 
             if (id == aruco_id)
             {
-                Debug.Log("OriginTracker updating " + id + " " + data.Pose.position);
+                //Debug.Log("OriginTracker updating " + id + " " + data.Pose.position);
                 this.transform.position = data.Pose.position;// - new Vector3(0.0381f, 0.0f, -0.0381f);
                 this.transform.rotation = data.Pose.rotation * Quaternion.Euler(-90,0,180);
 
@@ -98,7 +98,7 @@ public class TripleTracker : MonoBehaviour
     private void HandleOnTriggerPull(InputAction.CallbackContext obj)
     {
         float triggerValue = obj.ReadValue<float>();
-        Debug.Log("OriginTracker: Pull. The Trigger value is : " +  triggerValue);
+        //Debug.Log("OriginTracker: Pull. The Trigger value is : " +  triggerValue);
         trackedObject.transform.GetChild(4).gameObject.SetActive(true);
         _originFinding = true;
     }
@@ -106,7 +106,7 @@ public class TripleTracker : MonoBehaviour
     private void HandleOnTriggerRelease(InputAction.CallbackContext obj)
     {
         float triggerValue = obj.ReadValue<float>();
-        Debug.Log("OriginTracker: Release. The Trigger value is : " +  triggerValue);
+        //Debug.Log("OriginTracker: Release. The Trigger value is : " +  triggerValue);
         trackedObject.transform.GetChild(4).gameObject.SetActive(false);
         _originFinding = false;
 
@@ -115,7 +115,7 @@ public class TripleTracker : MonoBehaviour
             var n_root = GameObject.FindWithTag("NoodlesRootItem");
 
             if (n_root) {
-                Debug.Log("OriginTracker: Kicking off transform request");
+                //Debug.Log("OriginTracker: Kicking off transform request");
 
                 var args = new List<CBORObject>();
                 args.Add(CBORObject.FromObject(vrpn_id));
@@ -124,12 +124,12 @@ public class TripleTracker : MonoBehaviour
 
                 if (comp != null)
                 {
-                    Debug.Log("OrignTracker: INVOKE");
+                    //Debug.Log("OrignTracker: INVOKE");
                     comp.invoke_method_by_name("get_transform",  args, OnRequestReply);
                 }                        
             }
             
-            Debug.Log("OriginTracker: finished originFinding");
+            //Debug.Log("OriginTracker: finished originFinding");
         }
         catch (Exception e) 
         {
@@ -144,12 +144,11 @@ public class TripleTracker : MonoBehaviour
         {
             var controllerPosition = _controllerActions.Position.ReadValue<Vector3>();
             var controllerRotation = _controllerActions.Rotation.ReadValue<Quaternion>();
-            Debug.Log("Controller: " + controllerPosition + " " + controllerRotation);
+            //Debug.Log("Controller: " + controllerPosition + " " + controllerRotation);
                 
             try 
             {
                 var n_root = GameObject.FindWithTag("NoodlesRootItem");
-                //var world_pos = n_root.transform.TransformPoint(controllerPosition);
                 var forward_pos = controllerRotation * Vector3.forward + controllerPosition;
                 var root_offset = forward_pos - n_root.transform.position ;
                 var world_pos = new Vector3(root_offset[2], 
@@ -164,7 +163,7 @@ public class TripleTracker : MonoBehaviour
 
                     if (comp != null)
                     {
-                        Debug.Log("OrignTracker: INVOKE move");
+                        //Debug.Log("OrignTracker: INVOKE move");
                         comp.invoke_method_by_name("move_object",  args, NoReply);
                     }                        
                 }
@@ -178,7 +177,7 @@ public class TripleTracker : MonoBehaviour
     private void HandleOnBumperRelease(InputAction.CallbackContext obj)
     {
         bool bumperDown = obj.ReadValueAsButton();
-        Debug.Log("The Bumper released " + bumperDown);
+        //Debug.Log("The Bumper released " + bumperDown);
 
         try 
         {
@@ -190,7 +189,7 @@ public class TripleTracker : MonoBehaviour
 
                 if (comp != null)
                 {
-                    Debug.Log("OrignTracker: INVOKE move");
+                    //Debug.Log("OrignTracker: INVOKE move");
                     comp.invoke_method_by_name("object_moved",  args, NoReply);
                 }                        
             }
@@ -202,7 +201,7 @@ public class TripleTracker : MonoBehaviour
     }
 
     private void OnRequestReply(CBORObject reply) {
-        Debug.Log("OriginTracker: RQ REPLY" + reply.ToString());
+        //Debug.Log("OriginTracker: RQ REPLY" + reply.ToString());
 
         var transform_array = reply["result"];
 
@@ -228,7 +227,7 @@ public class TripleTracker : MonoBehaviour
 
         if (n_root == null || n_room_offset == null || indicator == null)
         {
-            Debug.Log("Unable to find root or root offset nodes, we cannot properly set the origin for this client!");
+            Debug.LogWarning("Unable to find root or root offset nodes, we cannot properly set the origin for this client!");
             return;
         }
 

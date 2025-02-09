@@ -167,7 +167,7 @@ public class NOODLESRoot : MonoBehaviour
     /// <param name="message">Message to send</param>
     /// <returns>async task</returns>
     void SendMessage<T>(T message) where T : IMessage{
-        Debug.Log("Sending message");
+        //Debug.Log("Sending message");
 
         // tuples are primitive here so we have to do this the bad way
         outgoing_messages.Enqueue(CBORObject.NewArray().Add(message.MessageId()).Add(message.ToCBOR()));
@@ -177,7 +177,7 @@ public class NOODLESRoot : MonoBehaviour
     /// An async task to continually read from the websocket and pre-process incoming messages
     /// </summary>
     async void ReadMessagesTask() {
-        Debug.Log("Starting read message task");
+        //Debug.Log("Starting read message task");
 
         while (true) {
             var message_array = await ReadNextMessage();
@@ -252,7 +252,7 @@ public class NOODLESRoot : MonoBehaviour
                 return;
             case 34:
                 // method reply
-                Debug.Log("Got reply " + content.ToString());
+                //Debug.Log("Got reply " + content.ToString());
                 var uuid = Guid.Parse(content["invoke_id"].AsString());
                 if (!message_response.Remove(uuid, out MessageReplyDelegate to_call)) {
                     Debug.LogWarning("Server sending response to message we did not send.");
@@ -260,16 +260,16 @@ public class NOODLESRoot : MonoBehaviour
                 }
 
                 if (to_call == null) {
-                    Debug.Log("Delegate is null!");
+                    Debug.LogWarning("Delegate is null!");
                     return;
                 }
 
-                Debug.Log("running delegate " + to_call);
+                //Debug.Log("running delegate " + to_call);
 
                 try {
                     to_call.Invoke(content);
                 } catch (Exception e) {
-                    Debug.Log("Failed to run method");
+                    Debug.LogWarning("Failed to run method");
                     Debug.LogException(e);
                 }
                 
@@ -331,7 +331,7 @@ public class NOODLESRoot : MonoBehaviour
 
         // by the spec, all messages are arrays
         if (message.Type != CBORType.Array) {
-            Debug.Log("Bad message");
+            Debug.LogWarning("Bad message");
             return CBORObject.Undefined;
         }
 
@@ -394,7 +394,7 @@ public class NOODLESRoot : MonoBehaviour
         }
 
         if (!fetched_urls.TryRemove(uri, out ReadOnlyMemory<byte> data)) {
-            Debug.Log(string.Format("Unable to find buffer: {0}", uri));
+            Debug.LogWarning(string.Format("Unable to find buffer: {0}", uri));
             throw new NullReferenceException("Missing buffer");
         }
 
@@ -413,7 +413,7 @@ public class NOODLESRoot : MonoBehaviour
     }
 
     public void invoke_method_by_name(String name, List<CBORObject> args, MessageReplyDelegate del) {
-        Debug.Log("INVOKE METHOD BY NAME: " + del.Method);
+        //Debug.Log("INVOKE METHOD BY NAME: " + del.Method);
         var component_and_id = components_pack.GetNoodlesComponentByName(ComponentType.Method, name);
 
         if (component_and_id != null)
@@ -425,7 +425,7 @@ public class NOODLESRoot : MonoBehaviour
     }
 
     public void invoke_method(NooID methodid, NooID? entityid, List<CBORObject> args, MessageReplyDelegate del) {
-        Debug.Log("INVOKE METHOD IMPL");
+        //Debug.Log("INVOKE METHOD IMPL");
         // omit check to see if method is on the entity. hopefully we just dont do that.
 
         var nid = Guid.NewGuid();
@@ -634,10 +634,10 @@ public interface INoodlesComponent {
 
 public class BlankComponent : INoodlesComponent {
     public void OnCreate(NOODLESRoot root, CBORObject content) {
-        Debug.Log("Creating component: ");
+        //Debug.Log("Creating component: ");
     }
     public void OnDelete(NOODLESRoot root) {
-        Debug.Log("Deleting component: ");
+        //Debug.Log("Deleting component: ");
     }
 
     public void OnUpdate(NOODLESRoot root, CBORObject content) {
@@ -698,14 +698,14 @@ public class ComponentList {
             }
             
 
-            Debug.Log("Check method " + comp_name + " against " + name);
+            //Debug.Log("Check method " + comp_name + " against " + name);
             
             if (comp_name == name)
             {
                 return (component_kv.Value, component_kv.Key);
             }
         }
-        Debug.Log("Unable to find method: " + name);
+        Debug.LogWarning("Unable to find method: " + name);
         return null;
     }
 
@@ -789,7 +789,7 @@ public class ComponentPack {
         //Debug.Log("On message: " + id.ToString());
 
         if (id.IsNull()) {
-            Debug.Log("ID is null!");
+            Debug.LogWarning("Message ID is null!");
             return;
         }
 
@@ -980,7 +980,7 @@ class MethodComponent : INoodlesComponent
     public void OnCreate(NOODLESRoot root, CBORObject content)
     {
         method_name = NooTools.name_from_content(content, "Method");
-        Debug.Log("new method " + method_name);
+        //Debug.Log("new method " + method_name);
     }
 
     public void OnDelete(NOODLESRoot root)
@@ -1009,7 +1009,7 @@ class BufferComponent : INoodlesComponent
 
     public void OnCreate(NOODLESRoot root, CBORObject content)
     {
-        Debug.Log("Creating new buffer: " +  NooTools.name_from_content(content, "Buffer"));
+        //Debug.Log("Creating new buffer: " +  NooTools.name_from_content(content, "Buffer"));
 
         NooTools.ActionOnContent("inline_bytes", content, (CBORObject value) => {
             storage = new ReadOnlyMemory<byte>(value.ToObject<byte[]>());
@@ -1024,7 +1024,7 @@ class BufferComponent : INoodlesComponent
 
     public void OnDelete(NOODLESRoot root)
     {
-        Debug.Log("Destroying buffer");
+        //Debug.Log("Destroying buffer");
         if (fetch_url.Length > 0){
             root.BufferCacheRelease(fetch_url);
         }
@@ -1054,7 +1054,7 @@ public class BufferViewComponent : INoodlesComponent
 
     public void OnCreate(NOODLESRoot root, CBORObject content)
     {
-        Debug.Log("Creating new buffer view: " +  NooTools.name_from_content(content, "BufferView"));
+        //Debug.Log("Creating new buffer view: " +  NooTools.name_from_content(content, "BufferView"));
 
         buffer = (BufferComponent?)root.GetNoodlesComponent(ComponentType.Buffer, NooID.FromCBOR(content["source_buffer"]));
 
@@ -1074,7 +1074,7 @@ public class BufferViewComponent : INoodlesComponent
 
     public void OnDelete(NOODLESRoot root)
     {
-        Debug.Log("Destroying bufferview");
+        //Debug.Log("Destroying bufferview");
     }
 
     public ReadOnlyMemory<byte> GetBytes() {
@@ -1368,7 +1368,7 @@ public class GeometryComponent : INoodlesComponent
 
         NooTools.ActionOnContent("indices", patch, (CBORObject index_info) =>
         {
-            Debug.Log("Adding index: " + index_info.ToString());
+            //Debug.Log("Adding index: " + index_info.ToString());
 
             BufferViewComponent buffer_view = (BufferViewComponent)root.GetNoodlesComponent(ComponentType.BufferView, NooID.FromCBOR(index_info["view"]))!;
             var count = index_info["count"].AsInt32();
@@ -1400,7 +1400,7 @@ public class GeometryComponent : INoodlesComponent
 
         // Finalize
         new_mesh.RecalculateBounds();
-        Debug.Log("Bounding volume: " + new_mesh.bounds);
+        //Debug.Log("Bounding volume: " + new_mesh.bounds);
 
         //new_mesh.UploadMeshData(true);
 
@@ -1474,7 +1474,7 @@ public class GeometryComponent : INoodlesComponent
     }
 
     private static Vector2[] MakeVEC2Array(ReadOnlyMemory<byte> data, int stride, int vertex_count) {
-        Debug.Log("Textures from vec2");
+        //Debug.Log("Textures from vec2");
         var ret = new Vector2[vertex_count];
 
         var bytes = data.ToArray();
@@ -1534,7 +1534,7 @@ public class GeometryComponent : INoodlesComponent
     }
 
     private static void SetPosition(Mesh mesh, ReadOnlyMemory<byte> data, GeometryAttrib att, int vertex_count) {
-        Debug.Log("Setting positions");
+        //Debug.Log("Setting positions");
 
         var p = MakeVEC3Array(data, att.stride, vertex_count);
 
@@ -1645,7 +1645,7 @@ public class GeometryComponent : INoodlesComponent
 
     public void OnCreate(NOODLESRoot root, CBORObject content)
     {
-        Debug.Log("Creating new Geometry: " +  NooTools.name_from_content(content, "Geometry"));
+        //Debug.Log("Creating new Geometry: " +  NooTools.name_from_content(content, "Geometry"));
 
         var patches = content["patches"];
 
@@ -1661,7 +1661,7 @@ public class GeometryComponent : INoodlesComponent
 
     public void OnDelete(NOODLESRoot root)
     {
-        Debug.Log("Destroying geometry");
+        //Debug.Log("Destroying geometry");
         foreach (var m in meshes)
         {
             Mesh.Destroy(m);
@@ -1775,21 +1775,21 @@ public class MaterialComponent : INoodlesComponent
             material!.SetFloat(smoothness_id, 1.0f - roughness); 
 
             NooTools.ActionOnContent("base_color_texture", obj, (CBORObject value) => {
-                Debug.Log("Found texture for material");
+                //Debug.Log("Found texture for material");
                 var tex_ref = GetTextureRef(root, value);
                 if (tex_ref.texture != null) {
                     material.SetTexture(base_color_map_id, tex_ref.texture.GetTexture());
                     material.SetTextureScale(base_color_map_id, new Vector2(1, -1));
                     material.SetTextureOffset(base_color_map_id, new Vector2(0, 1));
                 } else {
-                    Debug.Log("Texture is null!");
+                    Debug.LogWarning("Texture is null!");
                 }
                 if (tex_ref.texture != null) {
                     material.SetTexture(base_color_map_id, tex_ref.texture.GetTexture());
                     material.SetTextureScale(base_color_map_id, new Vector2(1, -1));
                     material.SetTextureOffset(base_color_map_id, new Vector2(0, 1));
                 } else {
-                    Debug.Log("Texture is null!");
+                    Debug.LogWarning("Texture is null!");
                 }
             });
         });
@@ -1801,7 +1801,7 @@ public class MaterialComponent : INoodlesComponent
 
     public void OnCreate(NOODLESRoot root, CBORObject content)
     {
-        Debug.Log("Creating new Material: " +  NooTools.name_from_content(content, "Material"));
+        //Debug.Log("Creating new Material: " +  NooTools.name_from_content(content, "Material"));
 
         material = new Material(root.newMaterialShader);
 
@@ -1810,7 +1810,7 @@ public class MaterialComponent : INoodlesComponent
 
     public void OnDelete(NOODLESRoot root)
     {
-        Debug.Log("Destroying material");
+        //Debug.Log("Destroying material");
         UnityEngine.Material.Destroy(material);
     }
 }
@@ -1832,7 +1832,7 @@ public class ImageComponent : INoodlesComponent
 
     public void OnCreate(NOODLESRoot root, CBORObject content)
     {
-        Debug.Log("Creating new Image: " +  NooTools.name_from_content(content, "Image"));
+        //Debug.Log("Creating new Image: " +  NooTools.name_from_content(content, "Image"));
 
         NooTools.ActionOnContent("buffer_source", content, (CBORObject value) => {
             var view_id = NooID.FromCBOR(value);
@@ -1873,7 +1873,7 @@ public class TextureComponent : INoodlesComponent
 
     public void OnCreate(NOODLESRoot root, CBORObject content)
     {
-        Debug.Log("Creating new Texture: " +  NooTools.name_from_content(content, "Texture"));
+        //Debug.Log("Creating new Texture: " +  NooTools.name_from_content(content, "Texture"));
 
         var image_id = NooID.FromCBOR(content["image"]);
         var image = (ImageComponent)root.GetNoodlesComponent(ComponentType.Image, image_id)!;
@@ -1959,15 +1959,6 @@ class EntityComponent : INoodlesComponent
         NooTools.ActionOnContent("visible", content, 
             (value) => {
                 var b = value.AsBoolean();
-                Debug.Log("Setting visible " + b);
-                managed_object!.SetActive(value.AsBoolean());
-            }
-        );
-
-        NooTools.ActionOnContent("visible", content, 
-            (value) => {
-                var b = value.AsBoolean();
-                Debug.Log("Setting visible " + b);
                 managed_object!.SetActive(value.AsBoolean());
             }
         );
