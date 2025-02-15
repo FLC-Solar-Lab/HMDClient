@@ -29,7 +29,7 @@ public class TripleTracker : MonoBehaviour
 
     private void Start()
     {
-        Debug.Log("OriginTracker::Start()");
+        //Debug.Log("OriginTracker::Start()");
         // create a tracker settings object with variables defined above
         MLMarkerTracker.ArucoDictionaryName d = MLMarkerTracker.ArucoDictionaryName.DICT_5X5_100;
         MLMarkerTracker.Profile profile = MLMarkerTracker.Profile.Accuracy;
@@ -56,7 +56,7 @@ public class TripleTracker : MonoBehaviour
     // subscribe to the event that detects markers
     private void OnEnable()
     {
-        Debug.Log("OriginTracker::OnEnable()");
+        //Debug.Log("OriginTracker::OnEnable()");
         MLMarkerTracker.OnMLMarkerTrackerResultsFound += OnTrackerResultsFound;
     }
 
@@ -144,7 +144,7 @@ public class TripleTracker : MonoBehaviour
         {
             var controllerPosition = _controllerActions.Position.ReadValue<Vector3>();
             var controllerRotation = _controllerActions.Rotation.ReadValue<Quaternion>();
-            //Debug.Log("Controller: " + controllerPosition + " " + controllerRotation);
+            //Debug.Log("OriginTracker Controller: " + controllerPosition + " " + controllerRotation);
                 
             try 
             {
@@ -163,8 +163,8 @@ public class TripleTracker : MonoBehaviour
 
                     if (comp != null)
                     {
-                        //Debug.Log("OrignTracker: INVOKE move");
-                        comp.invoke_method_by_name("move_object",  args, NoReply);
+                        //Debug.Log("OriginTracker: INVOKE position_updated");
+                        comp.invoke_method_by_name("position_updated",  args, NoReply);
                     }                        
                 }
             }
@@ -177,7 +177,7 @@ public class TripleTracker : MonoBehaviour
     private void HandleOnBumperRelease(InputAction.CallbackContext obj)
     {
         bool bumperDown = obj.ReadValueAsButton();
-        //Debug.Log("The Bumper released " + bumperDown);
+        //Debug.Log("OriginTracker The Bumper released " + bumperDown);
 
         try 
         {
@@ -189,8 +189,8 @@ public class TripleTracker : MonoBehaviour
 
                 if (comp != null)
                 {
-                    //Debug.Log("OrignTracker: INVOKE move");
-                    comp.invoke_method_by_name("object_moved",  args, NoReply);
+                    //Debug.Log("OriginTracker: INVOKE position_set");
+                    comp.invoke_method_by_name("position_set",  args, NoReply);
                 }                        
             }
         }

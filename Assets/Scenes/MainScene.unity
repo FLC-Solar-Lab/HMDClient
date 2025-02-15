@@ -586,7 +586,7 @@ PrefabInstance:
     - target: {fileID: 5609791579423962305, guid: fe799b2d0a84dfe43b001b56276fd2fb,
         type: 3}
       propertyPath: near clip plane
-      value: 0.3703704
+      value: 0.25
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -1149,7 +1149,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4a20db0f6e7f04f01997cecaaa6de24a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  serverURI: ws://192.168.86.22:50000
+  serverURI: ws://192.168.1.149:50000
   newMaterialShader: {fileID: 4800000, guid: 933532a4fcc9baf4fa0491de14d08ed7, type: 3}
 --- !u!1 &2115204461
 GameObject:
