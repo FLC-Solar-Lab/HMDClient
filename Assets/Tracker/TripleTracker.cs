@@ -34,7 +34,7 @@ public class TripleTracker : MonoBehaviour
         MLMarkerTracker.ArucoDictionaryName d = MLMarkerTracker.ArucoDictionaryName.DICT_5X5_100;
         MLMarkerTracker.Profile profile = MLMarkerTracker.Profile.Accuracy;
         // create a tracker settings object with variables defined above
-        MLMarkerTracker.TrackerSettings trackerSettings = MLMarkerTracker.TrackerSettings.Create(true, MLMarkerTracker.MarkerType.Aruco_April, 0.07161f, d, 0.07161f, profile);
+        MLMarkerTracker.TrackerSettings trackerSettings = MLMarkerTracker.TrackerSettings.Create(true, MLMarkerTracker.MarkerType.Aruco_April, 0.082f, d, 0.082f, profile);
 
       //Initialize the MagicLeapInputs like you would Unity's default action map.
        _magicLeapInputs = new MagicLeapInputs();
@@ -150,7 +150,7 @@ public class TripleTracker : MonoBehaviour
             {
                 var n_root = GameObject.FindWithTag("NoodlesRootItem");
                 var forward_pos = controllerRotation * Vector3.forward + controllerPosition;
-                var root_offset = forward_pos - n_root.transform.position ;
+                var root_offset = Quaternion.Inverse(n_root.transform.rotation) * (forward_pos - n_root.transform.position) ;
                 var world_pos = new Vector3(root_offset[2], 
                                             root_offset[1],
                                             root_offset[0]);
