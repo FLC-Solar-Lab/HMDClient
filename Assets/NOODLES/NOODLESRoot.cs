@@ -145,7 +145,7 @@ public class NOODLESRoot : MonoBehaviour
     /// </summary>
     async void Start()
     {
-        Debug.Log("Starting up connection to " + serverURI);
+        //Debug.Log("Starting up connection to " + serverURI);
         await ws.ConnectAsync(new System.Uri(serverURI), default);
 
         // send opening message
@@ -158,7 +158,7 @@ public class NOODLESRoot : MonoBehaviour
         write_task = new Task(() => WriteMessagesTask());
         write_task.Start();
 
-        Debug.Log("Startup complete");
+        //Debug.Log("Startup complete");
     }
     /// <summary>
     /// Dispatch a message to the server. This should be called from the main thread.
@@ -962,7 +962,7 @@ static class NooTools {
             24 => ComponentAction.Update,
             25 => ComponentAction.Delete,
             26 => ComponentAction.Create,
-            27 => ComponentAction.Update,
+            27 => ComponentAction.Delete,
             28 => ComponentAction.Create,
             29 => ComponentAction.Update,
             30 => ComponentAction.Delete,
