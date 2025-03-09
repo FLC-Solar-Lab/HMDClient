@@ -1797,6 +1797,11 @@ public class MaterialComponent : INoodlesComponent
         NooTools.ActionOnContent("use_alpha", content, (CBORObject value) => {
             material!.SetCutout();
         });
+
+        NooTools.ActionOnContent("double_sided", content, (CBORObject value) => {
+            // if we want to be correct, parse the value to a bool for people to turn this on or off, but for the moment...
+           material!.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
+        });
     }
 
     public void OnCreate(NOODLESRoot root, CBORObject content)
