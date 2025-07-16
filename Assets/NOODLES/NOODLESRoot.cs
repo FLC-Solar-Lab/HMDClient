@@ -1762,9 +1762,11 @@ public class MaterialComponent : INoodlesComponent
         };
     }
 
-    public void CommonUpdate(NOODLESRoot root, CBORObject content) {
+    public void CommonUpdate(NOODLESRoot root, CBORObject content)
+    {
 
-        NooTools.ActionOnContent("pbr_info", content, (CBORObject obj) => {
+        NooTools.ActionOnContent("pbr_info", content, (CBORObject obj) =>
+        {
 
             var color = NooTools.ArrayToColor(obj["base_color"]);
             var metallic = NooTools.TypedFromContent("metallic", content, 1.0f);
@@ -1772,36 +1774,56 @@ public class MaterialComponent : INoodlesComponent
 
             material!.SetColor(base_color_id, color);
             material!.SetFloat(metallic_id, metallic);
-            material!.SetFloat(smoothness_id, 1.0f - roughness); 
+            material!.SetFloat(smoothness_id, 1.0f - roughness);
 
-            NooTools.ActionOnContent("base_color_texture", obj, (CBORObject value) => {
+            NooTools.ActionOnContent("base_color_texture", obj, (CBORObject value) =>
+            {
                 //Debug.Log("Found texture for material");
                 var tex_ref = GetTextureRef(root, value);
-                if (tex_ref.texture != null) {
+                if (tex_ref.texture != null)
+                {
                     material.SetTexture(base_color_map_id, tex_ref.texture.GetTexture());
                     material.SetTextureScale(base_color_map_id, new Vector2(1, -1));
                     material.SetTextureOffset(base_color_map_id, new Vector2(0, 1));
-                } else {
+                }
+                else
+                {
                     Debug.LogWarning("Texture is null!");
                 }
-                if (tex_ref.texture != null) {
+                if (tex_ref.texture != null)
+                {
                     material.SetTexture(base_color_map_id, tex_ref.texture.GetTexture());
                     material.SetTextureScale(base_color_map_id, new Vector2(1, -1));
                     material.SetTextureOffset(base_color_map_id, new Vector2(0, 1));
-                } else {
+                }
+                else
+                {
                     Debug.LogWarning("Texture is null!");
                 }
             });
         });
 
-        NooTools.ActionOnContent("use_alpha", content, (CBORObject value) => {
+        NooTools.ActionOnContent("use_alpha", content, (CBORObject value) =>
+        {
             material!.SetCutout();
         });
 
-        NooTools.ActionOnContent("double_sided", content, (CBORObject value) => {
+        NooTools.ActionOnContent("double_sided", content, (CBORObject value) =>
+        {
             // if we want to be correct, parse the value to a bool for people to turn this on or off, but for the moment...
-           material!.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
+            material!.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
         });
+
+        // NooTools.ActionOnContent("visible", content,
+        // (value) =>
+        // {
+        //     var b = value.AsBoolean();
+        //     material!.SetActive(value.AsBoolean());
+        // });
+    }
+
+    public void OnUpdate(NOODLESRoot root, CBORObject content) {
+        CommonUpdate(root, content);
     }
 
     public void OnCreate(NOODLESRoot root, CBORObject content)
@@ -1906,41 +1928,52 @@ class EntityComponent : INoodlesComponent
         sub_objects = new();
     }
 
-    public void CommonUpdate(NOODLESRoot root, in CBORObject content) {
-        NooTools.ActionOnContent("parent", content, 
-            (parent) => {
+    public void CommonUpdate(NOODLESRoot root, in CBORObject content)
+    {
+        NooTools.ActionOnContent("parent", content,
+            (parent) =>
+            {
                 var id = NooID.FromCBOR(parent);
-                if (id.IsNull()) {
+                if (id.IsNull())
+                {
                     managed_object!.transform.parent = root.transform;
-                } else {
+                }
+                else
+                {
                     var comp = root.GetNoodlesComponent(ComponentType.Entity, id);
 
-                    if (comp is not null) {
+                    if (comp is not null)
+                    {
                         managed_object!.transform.parent = ((EntityComponent)comp).managed_object!.transform;
                     }
                 }
             }
         );
 
-        NooTools.ActionOnContent("render_rep", content, 
-            (value) => {
+        NooTools.ActionOnContent("render_rep", content,
+            (value) =>
+            {
                 RebuildChildren(root, value);
             }
         );
 
-        NooTools.ActionOnContent("null_rep", content, 
-            (value) => {
+        NooTools.ActionOnContent("null_rep", content,
+            (value) =>
+            {
                 ClearChildren();
             }
         );
 
-        NooTools.ActionOnContent("transform", content, (CBORObject tf_array) => {
+        NooTools.ActionOnContent("transform", content, (CBORObject tf_array) =>
+        {
             var mat = new Matrix4x4();
 
-            for (int column = 0; column < 4; column++) {
-                for (int row = 0; row < 4; row++) {
+            for (int column = 0; column < 4; column++)
+            {
+                for (int row = 0; row < 4; row++)
+                {
                     mat[row, column] = tf_array[row + column * 4].AsSingle();
-                }    
+                }
             }
 
             var position = mat.GetPosition();
@@ -1961,8 +1994,9 @@ class EntityComponent : INoodlesComponent
             tf.localScale = mat.lossyScale;
         });
 
-        NooTools.ActionOnContent("visible", content, 
-            (value) => {
+        NooTools.ActionOnContent("visible", content,
+            (value) =>
+            {
                 var b = value.AsBoolean();
                 managed_object!.SetActive(value.AsBoolean());
             }
