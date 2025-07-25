@@ -4,11 +4,7 @@ MonoImporter:
   externalObjects: {}
   serializedVersion: 2
   defaultReferences:
-  - _marker0: {fileID: 3790276207035758998, guid: 068f16b9fa64443fa8700a911c87626e,
-      type: 3}
-  - _marker2: {fileID: 3790276207035758998, guid: 068f16b9fa64443fa8700a911c87626e,
-      type: 3}
-  - _marker3: {fileID: 3790276207035758998, guid: 068f16b9fa64443fa8700a911c87626e,
+  - trackedObject: {fileID: 3790276207035758998, guid: 068f16b9fa64443fa8700a911c87626e,
       type: 3}
   executionOrder: 0
   icon: {instanceID: 0}
