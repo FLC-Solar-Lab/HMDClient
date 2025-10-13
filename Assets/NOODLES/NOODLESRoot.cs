@@ -64,6 +64,12 @@ public class NOODLESRoot : MonoBehaviour
     readonly ClientWebSocket ws;
 
     /// <summary>
+    /// Reusable HTTP client
+    /// </summary>
+    readonly static System.Net.Http.HttpClient http = new System.Net.Http.HttpClient();
+
+
+    /// <summary>
     /// Task that continually reads from the websocket
     /// </summary>
     Task? read_task;
@@ -186,17 +192,58 @@ public class NOODLESRoot : MonoBehaviour
         }
     }
 
-    async void WriteMessagesTask() {
-        while (true) {
-            if (outgoing_messages.TryDequeue(out CBORObject message)) {
+    async void WriteMessagesTask()
+    {
+        while (true)
+        {
+            if (outgoing_messages.TryDequeue(out CBORObject message))
+            {
                 var bytes = message.EncodeToBytes();
                 await ws.SendAsync(bytes, WebSocketMessageType.Binary, true, CancellationToken.None);
-            } else {
+            }
+            else
+            {
                 // cmon now. surely we can do better
                 await Task.Delay(16);
             }
         }
     }
+    
+    private ReadOnlyMemory<byte> TryFetch(string uri)
+{
+    try
+    {
+        using (var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, uri))
+        {
+            req.Headers.UserAgent.ParseAdd("NoodlesUnityClient/1.0");
+            req.Headers.Accept.ParseAdd("*/*");
+
+            // No HttpCompletionOption. Keep it simple and blocking.
+            var resp = http.SendAsync(req).GetAwaiter().GetResult();
+
+            var status = (int)resp.StatusCode;
+            var bytes  = resp.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
+
+            if (status >= 200 && status < 300)
+            {
+                Debug.Log($"HTTP {status} {uri} bytes={bytes?.Length ?? 0}");
+                return new ReadOnlyMemory<byte>(bytes);
+            }
+
+            // Log server error body to see WHY it’s 400.
+            string bodyPreview = "";
+            try { bodyPreview = System.Text.Encoding.UTF8.GetString(bytes, 0, Math.Min(bytes.Length, 256)); } catch {}
+            Debug.LogError($"HTTP {status} for {uri}. Body<=256: {bodyPreview}");
+            return ReadOnlyMemory<byte>.Empty;
+        }
+    }
+    catch (Exception ex)
+    {
+        Debug.LogError($"Fetch error {uri}: {ex.Message}");
+        return ReadOnlyMemory<byte>.Empty;
+    }
+}
+
 
     /// <summary>
     /// Consume a message array from the server and handle each message. This must be run from the main thread.
@@ -232,7 +279,7 @@ public class NOODLESRoot : MonoBehaviour
             {
                 Debug.LogException(e);
                 Debug.LogError("Error handling " + id + " content " + content.ToString());
-                throw;
+                // throw;   // CHANGE 1
             }
            
             cursor += 2;
@@ -345,27 +392,20 @@ public class NOODLESRoot : MonoBehaviour
             // should be BufferCreate and ImageCreate that can point to remote resources
             switch (id) {
                 case 10:
-                    NooTools.ActionOnContent("uri_bytes", content, (CBORObject value) => {
+                    NooTools.ActionOnContent("uri_bytes", content, value =>
+                    {
                         string uri_target = value.AsString();
-                        var client = new System.Net.Http.HttpClient();
-
-                        var request = Task.Run( () => client.GetByteArrayAsync(uri_target) ).Result;
-
-                        fetched_urls[uri_target] = new ReadOnlyMemory<byte>(request);
+                        fetched_urls[uri_target] = TryFetch(uri_target);
                     });
                     break;
                 case 17:
-                    NooTools.ActionOnContent("uri_source", content, (CBORObject value) => {
+                    NooTools.ActionOnContent("uri_source", content, value =>
+                    {
                         string uri_target = value.AsString();
-                        var client = new System.Net.Http.HttpClient();
-
-                        var request = Task.Run( () => client.GetByteArrayAsync(uri_target) ).Result;
-
-                        fetched_urls[uri_target] = new ReadOnlyMemory<byte>(request);
+                        fetched_urls[uri_target] = TryFetch(uri_target);
                     });
                     break;
             }
-           
             cursor += 2;
         }
 
@@ -393,14 +433,14 @@ public class NOODLESRoot : MonoBehaviour
             return Cache.Fetch(uri);
         }
 
-        if (!fetched_urls.TryRemove(uri, out ReadOnlyMemory<byte> data)) {
-            Debug.LogWarning(string.Format("Unable to find buffer: {0}", uri));
-            throw new NullReferenceException("Missing buffer");
+        if (fetched_urls.TryRemove(uri, out var data))   // CHANGE 2
+        {
+            Cache.Install(uri, data);
+            return data;
         }
-
-        Cache.Install(uri, data);
-
-        return data;
+        
+        Debug.LogWarning($"Missing buffer for {uri}");
+        return ReadOnlyMemory<byte>.Empty;   // returning empty instead of garbage
     }
 
     public void BufferCacheRelease(string uri) {
@@ -715,7 +755,14 @@ public class ComponentList {
     }
 
     public void Update(NOODLESRoot root, NooID place, CBORObject content) {
-        component_collection[place].OnUpdate(root, content);
+        if (component_collection.TryGetValue(place, out var comp))
+        {
+            comp.OnUpdate(root, content);
+        }
+        else
+        {
+            Debug.LogWarning($"Update on missing component {place.slot}/{place.gen}");
+        }
     }
 
     public void Remove(NOODLESRoot root, NooID place) {
@@ -808,7 +855,18 @@ public class ComponentPack {
                 clist.Insert(root, id, new_component, content);
                 break;
             case ComponentAction.Update: 
-                clist.Update(root, id, content);
+                var existing = clist.Get(id);
+                if (existing != null)
+                {
+                    clist.Update(root, id, content);
+                }
+                else
+                {
+                    // Create on first sight if server sent UPDATE before CREATE
+                    var new_comp = NooTools.MakeNewComponent(component);   // this migh work
+                    clist.Insert(root, id, new_comp, content);
+                    Debug.LogWarning($"Auto-created {component} {id.slot}/{id.gen} on UPDATE");
+                }
                 break;
             case ComponentAction.Delete: 
                 clist.Remove(root, id);
@@ -1061,7 +1119,10 @@ public class BufferViewComponent : INoodlesComponent
         offset = content["offset"].ToObject<long>();
         length = content["length"].ToObject<long>();
 
-        storage ??= buffer!.GetBytes().Slice((int)offset, (int)length);
+        var src = buffer!.GetBytes();
+        if (src.IsEmpty) { Debug.LogWarning("BufferView: empty source"); return; }
+
+        storage ??= src.Slice((int)offset, (int)length);
 
         if (storage == null) {
             Debug.LogError("Source buffer is null!");
@@ -1077,9 +1138,10 @@ public class BufferViewComponent : INoodlesComponent
         //Debug.Log("Destroying bufferview");
     }
 
-    public ReadOnlyMemory<byte> GetBytes() {
-        Assert.IsTrue(storage != null);
-        return storage ?? new ReadOnlyMemory<byte>(); 
+    public ReadOnlyMemory<byte> GetBytes()
+    {
+        // Assert.IsTrue(storage != null);
+        return storage ?? ReadOnlyMemory<byte>.Empty;
     }
 }
 
@@ -1376,7 +1438,12 @@ public class GeometryComponent : INoodlesComponent
             var stride = NooTools.TypedFromContent("stride", index_info, 0);
             var format = index_info["format"].AsString();
 
-            var bytes = buffer_view.GetBytes()[offset..];
+            var all = buffer_view.GetBytes();
+            if (all.IsEmpty) {
+                Debug.LogWarning("Geom: empty indices");
+                return; 
+            }
+            var bytes = all[offset..];
 
             new_mesh.indexFormat = IndexFormat.UInt16;
 
@@ -1553,7 +1620,9 @@ public class GeometryComponent : INoodlesComponent
             foreach (var att in stream_pack.Value) {
                 var view = (BufferViewComponent)root.GetNoodlesComponent(ComponentType.BufferView, att.buffer_view)!;
                 var data = view.GetBytes();
+                if (data.IsEmpty) { Debug.LogWarning("Geom: empty attr"); continue; }
                 data = data[att.offset..];
+
 
                 switch (att.semantic) {
                     case "POSITION":
@@ -1635,6 +1704,10 @@ public class GeometryComponent : INoodlesComponent
         {
             var buffer_view = (BufferViewComponent)root.GetNoodlesComponent(ComponentType.BufferView, stream.Key)!;
             var bytes = buffer_view.GetBytes();
+            if (bytes.IsEmpty) {
+                Debug.LogWarning("Geom: empty interleaved stream");
+                continue; 
+            }
 
             var vertex_size = stream_stride[stream.Value];
 
@@ -1762,11 +1835,9 @@ public class MaterialComponent : INoodlesComponent
         };
     }
 
-    public void CommonUpdate(NOODLESRoot root, CBORObject content)
-    {
+    public void CommonUpdate(NOODLESRoot root, CBORObject content) {
 
-        NooTools.ActionOnContent("pbr_info", content, (CBORObject obj) =>
-        {
+        NooTools.ActionOnContent("pbr_info", content, (CBORObject obj) => {
 
             var color = NooTools.ArrayToColor(obj["base_color"]);
             var metallic = NooTools.TypedFromContent("metallic", content, 1.0f);
@@ -1774,56 +1845,36 @@ public class MaterialComponent : INoodlesComponent
 
             material!.SetColor(base_color_id, color);
             material!.SetFloat(metallic_id, metallic);
-            material!.SetFloat(smoothness_id, 1.0f - roughness);
+            material!.SetFloat(smoothness_id, 1.0f - roughness); 
 
-            NooTools.ActionOnContent("base_color_texture", obj, (CBORObject value) =>
-            {
+            NooTools.ActionOnContent("base_color_texture", obj, (CBORObject value) => {
                 //Debug.Log("Found texture for material");
                 var tex_ref = GetTextureRef(root, value);
-                if (tex_ref.texture != null)
-                {
+                if (tex_ref.texture != null) {
                     material.SetTexture(base_color_map_id, tex_ref.texture.GetTexture());
                     material.SetTextureScale(base_color_map_id, new Vector2(1, -1));
                     material.SetTextureOffset(base_color_map_id, new Vector2(0, 1));
-                }
-                else
-                {
+                } else {
                     Debug.LogWarning("Texture is null!");
                 }
-                if (tex_ref.texture != null)
-                {
+                if (tex_ref.texture != null) {
                     material.SetTexture(base_color_map_id, tex_ref.texture.GetTexture());
                     material.SetTextureScale(base_color_map_id, new Vector2(1, -1));
                     material.SetTextureOffset(base_color_map_id, new Vector2(0, 1));
-                }
-                else
-                {
+                } else {
                     Debug.LogWarning("Texture is null!");
                 }
             });
         });
 
-        NooTools.ActionOnContent("use_alpha", content, (CBORObject value) =>
-        {
+        NooTools.ActionOnContent("use_alpha", content, (CBORObject value) => {
             material!.SetCutout();
         });
 
-        NooTools.ActionOnContent("double_sided", content, (CBORObject value) =>
-        {
+        NooTools.ActionOnContent("double_sided", content, (CBORObject value) => {
             // if we want to be correct, parse the value to a bool for people to turn this on or off, but for the moment...
-            material!.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
+           material!.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
         });
-
-        // NooTools.ActionOnContent("visible", content,
-        // (value) =>
-        // {
-        //     var b = value.AsBoolean();
-        //     material!.SetActive(value.AsBoolean());
-        // });
-    }
-
-    public void OnUpdate(NOODLESRoot root, CBORObject content) {
-        CommonUpdate(root, content);
     }
 
     public void OnCreate(NOODLESRoot root, CBORObject content)
@@ -1860,6 +1911,7 @@ public class ImageComponent : INoodlesComponent
     public void OnCreate(NOODLESRoot root, CBORObject content)
     {
         //Debug.Log("Creating new Image: " +  NooTools.name_from_content(content, "Image"));
+        bytes = ReadOnlyMemory<byte>.Empty;
 
         NooTools.ActionOnContent("buffer_source", content, (CBORObject value) => {
             var view_id = NooID.FromCBOR(value);
@@ -1867,10 +1919,13 @@ public class ImageComponent : INoodlesComponent
             bytes = view.GetBytes();
         });
 
-        NooTools.ActionOnContent("uri_source", content, (CBORObject value) => {
+        NooTools.ActionOnContent("uri_source", content, (CBORObject value) =>
+        {
             cached_buffer = value.AsString();
             bytes = root.BufferCacheGet(cached_buffer);
         });
+        
+        if (bytes.IsEmpty) Debug.LogWarning("Image: no bytes");
     }
 
     public void OnDelete(NOODLESRoot root)
@@ -1901,11 +1956,17 @@ public class TextureComponent : INoodlesComponent
     public void OnCreate(NOODLESRoot root, CBORObject content)
     {
         //Debug.Log("Creating new Texture: " +  NooTools.name_from_content(content, "Texture"));
-
         var image_id = NooID.FromCBOR(content["image"]);
         var image = (ImageComponent)root.GetNoodlesComponent(ComponentType.Image, image_id)!;
-        texture = new Texture2D(2, 2); // dims will be resized
-        texture.LoadImage(image.GetBytes().ToArray());
+
+        var mem = image.GetBytes();
+        if (mem.IsEmpty) {
+            Debug.LogWarning("Texture: image bytes empty; delaying texture creation");
+            return;
+        }
+
+        texture = new Texture2D(2, 2);
+        texture.LoadImage(mem.ToArray());
         texture.wrapMode = TextureWrapMode.Clamp;
     }
 
@@ -1928,52 +1989,41 @@ class EntityComponent : INoodlesComponent
         sub_objects = new();
     }
 
-    public void CommonUpdate(NOODLESRoot root, in CBORObject content)
-    {
-        NooTools.ActionOnContent("parent", content,
-            (parent) =>
-            {
+    public void CommonUpdate(NOODLESRoot root, in CBORObject content) {
+        NooTools.ActionOnContent("parent", content, 
+            (parent) => {
                 var id = NooID.FromCBOR(parent);
-                if (id.IsNull())
-                {
+                if (id.IsNull()) {
                     managed_object!.transform.parent = root.transform;
-                }
-                else
-                {
+                } else {
                     var comp = root.GetNoodlesComponent(ComponentType.Entity, id);
 
-                    if (comp is not null)
-                    {
+                    if (comp is not null) {
                         managed_object!.transform.parent = ((EntityComponent)comp).managed_object!.transform;
                     }
                 }
             }
         );
 
-        NooTools.ActionOnContent("render_rep", content,
-            (value) =>
-            {
+        NooTools.ActionOnContent("render_rep", content, 
+            (value) => {
                 RebuildChildren(root, value);
             }
         );
 
-        NooTools.ActionOnContent("null_rep", content,
-            (value) =>
-            {
+        NooTools.ActionOnContent("null_rep", content, 
+            (value) => {
                 ClearChildren();
             }
         );
 
-        NooTools.ActionOnContent("transform", content, (CBORObject tf_array) =>
-        {
+        NooTools.ActionOnContent("transform", content, (CBORObject tf_array) => {
             var mat = new Matrix4x4();
 
-            for (int column = 0; column < 4; column++)
-            {
-                for (int row = 0; row < 4; row++)
-                {
+            for (int column = 0; column < 4; column++) {
+                for (int row = 0; row < 4; row++) {
                     mat[row, column] = tf_array[row + column * 4].AsSingle();
-                }
+                }    
             }
 
             var position = mat.GetPosition();
@@ -1994,9 +2044,8 @@ class EntityComponent : INoodlesComponent
             tf.localScale = mat.lossyScale;
         });
 
-        NooTools.ActionOnContent("visible", content,
-            (value) =>
-            {
+        NooTools.ActionOnContent("visible", content, 
+            (value) => {
                 var b = value.AsBoolean();
                 managed_object!.SetActive(value.AsBoolean());
             }
