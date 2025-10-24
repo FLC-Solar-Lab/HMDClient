@@ -218,7 +218,7 @@ public class NOODLESRoot : MonoBehaviour
             req.Headers.UserAgent.ParseAdd("NoodlesUnityClient/1.0");
             req.Headers.Accept.ParseAdd("*/*");
 
-            // No HttpCompletionOption. Keep it simple and blocking.
+            // No HttpCompletionOption
             var resp = http.SendAsync(req).GetAwaiter().GetResult();
 
             var status = (int)resp.StatusCode;
@@ -230,7 +230,7 @@ public class NOODLESRoot : MonoBehaviour
                 return new ReadOnlyMemory<byte>(bytes);
             }
 
-            // Log server error body to see WHY it’s 400.
+            // Log to see WHY it’s 400.
             string bodyPreview = "";
             try { bodyPreview = System.Text.Encoding.UTF8.GetString(bytes, 0, Math.Min(bytes.Length, 256)); } catch {}
             Debug.LogError($"HTTP {status} for {uri}. Body<=256: {bodyPreview}");
@@ -279,7 +279,8 @@ public class NOODLESRoot : MonoBehaviour
             {
                 Debug.LogException(e);
                 Debug.LogError("Error handling " + id + " content " + content.ToString());
-                // throw;   // CHANGE 1
+                // throw;   // Do not crash whole system
+                // TODO MAYBE HANDLE THIS EXCEPTION SOMEHOW
             }
            
             cursor += 2;
