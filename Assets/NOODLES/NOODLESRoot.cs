@@ -750,8 +750,18 @@ public class ComponentList {
     }
 
     public void Insert(NOODLESRoot root, NooID place, INoodlesComponent comp, CBORObject content) {
-        component_collection.Add(place, comp);
-        comp.OnCreate(root, content);
+        // when inserting a component, ensure does not have same key.
+        if (!component_collection.ContainsKey(place))
+        {
+            component_collection.Add(place, comp);
+            comp.OnCreate(root, content);
+        } 
+        else
+        {
+            Debug.LogWarning("DEBUG: Attempted to add a duplicate key to dictionary!");   
+        }       
+
+        
     }
 
     public void Update(NOODLESRoot root, NooID place, CBORObject content) {
