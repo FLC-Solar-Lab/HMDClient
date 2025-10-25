@@ -268,7 +268,6 @@ public class NOODLESRoot : MonoBehaviour
 
             try
             {
-
                 if (id <= 30){
                     components_pack.Handle(this, id, content);
                 } else {
@@ -2039,10 +2038,10 @@ class EntityComponent : INoodlesComponent
             position.z *= -1;
 
             //Debug.Log(string.Format("AFTER {0} {1} {2}", position, rotation, mat.lossyScale));
-
-            var tf = managed_object!.transform;
-            tf.SetLocalPositionAndRotation(position, rotation);
-            tf.localScale = mat.lossyScale;
+            
+            // NOTE: changed the following code to use current instance of transform, instead of expired old reference.
+            managed_object!.transform.SetLocalPositionAndRotation(position, rotation);
+            managed_object!.transform.localScale = mat.lossyScale;
         });
 
         NooTools.ActionOnContent("visible", content, 
