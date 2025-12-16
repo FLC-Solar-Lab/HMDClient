@@ -22,62 +22,28 @@ public class Instructions : MonoBehaviour
     private MagicLeapInputs.ControllerActions _controllerActions;
 
     private NOODLESRoot _noodlesRoot;
-    private List<NOODLESRoot> _noodlesRoots;
-    private int numClients = 10;
-
     private TextMeshProUGUI _serverStatus;
 
     private System.Net.WebSockets.WebSocketState _connectionState = WebSocketState.None;
 
     public GameObject canvas;
 
-
-
     // Start is called before the first frame update
     void Start()
     {
         //Initialize the MagicLeapInputs like you would Unity's default action map.
-        _magicLeapInputs = new MagicLeapInputs();
-        _magicLeapInputs.Enable();
-        //Initialize the ControllerActions based off the Magic Leap Input
-        _controllerActions = new MagicLeapInputs.ControllerActions(_magicLeapInputs);
-        _controllerActions.Trigger.started += HandleButtonPress;
-        _controllerActions.Bumper.started += HandleButtonPress;
-        _controllerActions.Menu.started += HandleMenu;
+       _magicLeapInputs = new MagicLeapInputs();
+       _magicLeapInputs.Enable();
+       //Initialize the ControllerActions based off the Magic Leap Input
+       _controllerActions = new MagicLeapInputs.ControllerActions(_magicLeapInputs);
+       _controllerActions.Trigger.started += HandleButtonPress;
+       _controllerActions.Bumper.started += HandleButtonPress;
+       _controllerActions.Menu.started += HandleMenu;
 
-        _noodlesRoots = new List<NOODLESRoot>();
-
-        // find original component & set
-        GameObject ogRoot = GameObject.Find("NoodlesRoot");
-        if (ogRoot != null)
-        {
-            NOODLESRoot ogComp = ogRoot.GetComponent<NOODLESRoot>();
-            if (ogComp != null)
-            {
-                _noodlesRoots.Add(ogComp);
-            }
-        }
-
-        for (int i = 1; i < numClients; i++)
-        {
-            GameObject newRoot = Instantiate(ogRoot);
-            newRoot.name = $"NoodlesRoot_Client_{i}";
-            newRoot.transform.position = ogRoot.transform.position;
-            NOODLESRoot newComp = newRoot.GetComponent<NOODLESRoot>();
-            if (newComp != null)
-            {
-                _noodlesRoots.Add(newComp);
-            }
-
-        }
-
-        if (numClients == 1)
-        {
-            _noodlesRoot = ogRoot.GetComponent<NOODLESRoot>();
-        }
-            _serverStatus = GameObject.Find("ServerStatus").gameObject.GetComponent<TextMeshProUGUI>();
+       _noodlesRoot = GameObject.Find("NoodlesRoot").gameObject.GetComponent<NOODLESRoot>();
+       _serverStatus = GameObject.Find("ServerStatus").gameObject.GetComponent<TextMeshProUGUI>();
         Debug.Log("Instructions serverStatus " + GameObject.Find("ServerStatus") + " - " + _serverStatus);
-        updateServerInfo();
+       updateServerInfo();
     }
 
     void Update() {

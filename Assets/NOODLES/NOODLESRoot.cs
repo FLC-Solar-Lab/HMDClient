@@ -115,6 +115,12 @@ public class NOODLESRoot : MonoBehaviour
     public Shader? newMaterialShader;
 
 
+
+    // Sephamore Stuff
+    private readonly SemaphoreSlim writeSig = new SemaphoreSlim(0);
+    private CancellationTokenSource? cts;
+
+
     public event EntityChangeDelegate? OnEntityCreated;
     public event EntityChangeDelegate? OnEntityUpdated;
 
@@ -126,6 +132,7 @@ public class NOODLESRoot : MonoBehaviour
         Cache = new();
         components_pack = new();
         message_response = new();
+        cts = new CancellationTokenSource();
     }
 
     public void FireOnEntityCreated(GameObject obj, CBORObject content) {
@@ -157,14 +164,11 @@ public class NOODLESRoot : MonoBehaviour
         // send opening message
         SendMessage(new Introduction("Unity Client"));
 
-        // start socket read task
-        read_task = new Task(() => ReadMessagesTask());
-        read_task.Start();
+        cts = new CancellationTokenSource();
+    	read_task = Task.Run(() => ReadMessagesTask(cts.Token));
+    	write_task = Task.Run(() => WriteMessagesTask(cts.Token));
 
-        write_task = new Task(() => WriteMessagesTask());
-        write_task.Start();
-
-        //Debug.Log("Startup complete");
+        Debug.Log("Startup complete");
     }
     /// <summary>
     /// Dispatch a message to the server. This should be called from the main thread.
@@ -177,72 +181,115 @@ public class NOODLESRoot : MonoBehaviour
 
         // tuples are primitive here so we have to do this the bad way
         outgoing_messages.Enqueue(CBORObject.NewArray().Add(message.MessageId()).Add(message.ToCBOR()));
+        writeSig.Release();
     }
+
+    private async void OnDestroy()
+{
+    if (cts != null)
+    {
+        cts.Cancel();
+        try
+        {
+            if (read_task != null) await read_task;
+            if (write_task != null) await write_task;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogException(ex);
+        }
+        cts.Dispose();
+    }
+    ws?.Dispose();
+    writeSig?.Dispose();
+}
 
     /// <summary>
     /// An async task to continually read from the websocket and pre-process incoming messages
     /// </summary>
-    async void ReadMessagesTask() {
+    private async Task ReadMessagesTask(CancellationToken token) {
         //Debug.Log("Starting read message task");
+        try{
+            while(!token.IsCancellationRequested) {
+                var message_array = await ReadNextMessage();
+                incoming_messages.Enqueue(message_array);
+            }
+        } catch(OperationCanceledException) {
 
-        while (true) {
-            var message_array = await ReadNextMessage();
-
-            incoming_messages.Enqueue(message_array);
+        } catch (Exception e) {
+            Debug.LogException(e);
         }
     }
 
-    async void WriteMessagesTask()
-    {
-        while (true)
-        {
-            if (outgoing_messages.TryDequeue(out CBORObject message))
-            {
-                var bytes = message.EncodeToBytes();
-                await ws.SendAsync(bytes, WebSocketMessageType.Binary, true, CancellationToken.None);
-            }
-            else
-            {
-                // cmon now. surely we can do better
-                await Task.Delay(16);
-            }
-        }
-    }
-    
-    private ReadOnlyMemory<byte> TryFetch(string uri)
+    private async Task WriteMessagesTask(CancellationToken token)
 {
     try
     {
-        using (var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, uri))
+        while (!token.IsCancellationRequested)
         {
-            req.Headers.UserAgent.ParseAdd("NoodlesUnityClient/1.0");
-            req.Headers.Accept.ParseAdd("*/*");
-
-            // No HttpCompletionOption
-            var resp = http.SendAsync(req).GetAwaiter().GetResult();
-
-            var status = (int)resp.StatusCode;
-            var bytes  = resp.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
-
-            if (status >= 200 && status < 300)
+            await writeSig.WaitAsync(token);
+            while (outgoing_messages.TryDequeue(out CBORObject message))
             {
-                Debug.Log($"HTTP {status} {uri} bytes={bytes?.Length ?? 0}");
-                return new ReadOnlyMemory<byte>(bytes);
+                var bytes = message.EncodeToBytes();
+                await ws.SendAsync(bytes, WebSocketMessageType.Binary, true, token);
             }
-
-            // Log to see WHY it’s 400.
-            string bodyPreview = "";
-            try { bodyPreview = System.Text.Encoding.UTF8.GetString(bytes, 0, Math.Min(bytes.Length, 256)); } catch {}
-            Debug.LogError($"HTTP {status} for {uri}. Body<=256: {bodyPreview}");
-            return ReadOnlyMemory<byte>.Empty;
         }
     }
-    catch (Exception ex)
+    catch (OperationCanceledException)
     {
-        Debug.LogError($"Fetch error {uri}: {ex.Message}");
-        return ReadOnlyMemory<byte>.Empty;
+        Debug.Log("WriteMessagesTask cancelled.");
+    }
+    catch (Exception e)
+    {
+        Debug.LogException(e);
     }
 }
+    
+    private ReadOnlyMemory<byte> TryFetch(string uri, int maxRetries = 10)
+{
+    for (int attempt = 0; attempt < maxRetries; attempt++)
+    {
+        try
+        {
+            using (var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, uri))
+            {
+                req.Headers.UserAgent.ParseAdd("NoodlesUnityClient/1.0");
+                req.Headers.Accept.ParseAdd("*/*");
+
+                var resp = http.SendAsync(req).GetAwaiter().GetResult();
+                var status = (int)resp.StatusCode;
+                var bytes = resp.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
+
+                if (status >= 200 && status < 300)
+                {
+                    Debug.Log($"HTTP {status} {uri} bytes={bytes?.Length ?? 0}");
+                    return new ReadOnlyMemory<byte>(bytes);
+                }
+
+                // Log the HTTP error.
+                string bodyPreview = "";
+                try { bodyPreview = System.Text.Encoding.UTF8.GetString(bytes, 0, Math.Min(bytes.Length, 256)); } catch { }
+                Debug.LogError($"HTTP {status} for {uri}. Body<=256: {bodyPreview}");
+                // If a non-success status code is received, decide whether to retry
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"Fetch error {uri}: {ex.Message}");
+            if (attempt == maxRetries - 1)
+            {
+                // Re-throw on the final attempt
+                throw;
+            }
+        }
+
+        // Optionally log the retry attempt
+        Debug.Log($"Retrying {uri} (Attempt {attempt + 1}/{maxRetries})...");
+    }
+
+    return ReadOnlyMemory<byte>.Empty; // Return if all attempts fail
+}
+
 
 
     /// <summary>
