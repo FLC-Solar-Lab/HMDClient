@@ -119,6 +119,8 @@ public class NOODLESRoot : MonoBehaviour
     // Sephamore Stuff
     private readonly SemaphoreSlim writeSig = new SemaphoreSlim(0);
     private CancellationTokenSource? cts;
+    private readonly SemaphoreSlim httpSlots = new SemaphoreSlim(4); // limit concurrent HTTP per client
+    private readonly ConcurrentDictionary<string, Task<ReadOnlyMemory<byte>>> fetchTasks = new ConcurrentDictionary<string, Task<ReadOnlyMemory<byte>>>();
 
 
     public event EntityChangeDelegate? OnEntityCreated;
@@ -222,73 +224,123 @@ public class NOODLESRoot : MonoBehaviour
     }
 
     private async Task WriteMessagesTask(CancellationToken token)
-{
-    try
-    {
-        while (!token.IsCancellationRequested)
-        {
-            await writeSig.WaitAsync(token);
-            while (outgoing_messages.TryDequeue(out CBORObject message))
-            {
-                var bytes = message.EncodeToBytes();
-                await ws.SendAsync(bytes, WebSocketMessageType.Binary, true, token);
-            }
-        }
-    }
-    catch (OperationCanceledException)
-    {
-        Debug.Log("WriteMessagesTask cancelled.");
-    }
-    catch (Exception e)
-    {
-        Debug.LogException(e);
-    }
-}
-    
-    private ReadOnlyMemory<byte> TryFetch(string uri, int maxRetries = 10)
-{
-    for (int attempt = 0; attempt < maxRetries; attempt++)
     {
         try
         {
-            using (var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, uri))
+            while (!token.IsCancellationRequested)
             {
-                req.Headers.UserAgent.ParseAdd("NoodlesUnityClient/1.0");
-                req.Headers.Accept.ParseAdd("*/*");
-
-                var resp = http.SendAsync(req).GetAwaiter().GetResult();
-                var status = (int)resp.StatusCode;
-                var bytes = resp.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
-
-                if (status >= 200 && status < 300)
+                await writeSig.WaitAsync(token);
+                while (outgoing_messages.TryDequeue(out CBORObject message))
                 {
-                    Debug.Log($"HTTP {status} {uri} bytes={bytes?.Length ?? 0}");
-                    return new ReadOnlyMemory<byte>(bytes);
+                    var bytes = message.EncodeToBytes();
+                    await ws.SendAsync(bytes, WebSocketMessageType.Binary, true, token);
                 }
-
-                // Log the HTTP error.
-                string bodyPreview = "";
-                try { bodyPreview = System.Text.Encoding.UTF8.GetString(bytes, 0, Math.Min(bytes.Length, 256)); } catch { }
-                Debug.LogError($"HTTP {status} for {uri}. Body<=256: {bodyPreview}");
-                // If a non-success status code is received, decide whether to retry
             }
         }
-        catch (Exception ex)
+        catch (OperationCanceledException)
         {
-            Debug.LogError($"Fetch error {uri}: {ex.Message}");
-            if (attempt == maxRetries - 1)
-            {
-                // Re-throw on the final attempt
-                throw;
-            }
+            Debug.Log("WriteMessagesTask cancelled.");
         }
-
-        // Optionally log the retry attempt
-        Debug.Log($"Retrying {uri} (Attempt {attempt + 1}/{maxRetries})...");
+        catch (Exception e)
+        {
+            Debug.LogException(e);
+        }
     }
 
-    return ReadOnlyMemory<byte>.Empty; // Return if all attempts fail
-}
+    private void EnsureFetchStarted(string uri)
+    {
+        fetchTasks.GetOrAdd(uri, _ => Task.Run(async () =>
+        {
+            await httpSlots.WaitAsync();
+            try
+            {
+                return await FetchAsync(uri);
+            }
+            finally
+            {
+                httpSlots.Release();
+            }
+        }));
+    }
+
+    private static async Task<ReadOnlyMemory<byte>> FetchAsync(string uri, int maxRetries = 10)
+    {
+        for (int attempt = 0; attempt < maxRetries; attempt++)
+        {
+            try
+            {
+                using (var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, uri))
+                {
+                    req.Headers.UserAgent.ParseAdd("NoodlesUnityClient/1.0");
+                    req.Headers.Accept.ParseAdd("*/*");
+
+                    using (var resp = await http.SendAsync(req))
+                    {
+                        int status = (int)resp.StatusCode;
+                        byte[] bytes = await resp.Content.ReadAsByteArrayAsync();
+
+                        if (status >= 200 && status < 300)
+                        {
+                            return new ReadOnlyMemory<byte>(bytes);
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // retry
+            }
+
+            await Task.Delay(25);
+        }
+
+        return ReadOnlyMemory<byte>.Empty;
+    }
+
+    // private ReadOnlyMemory<byte> TryFetch(string uri, int maxRetries = 10)
+    // {
+    //     for (int attempt = 0; attempt < maxRetries; attempt++)
+    //     {
+    //         try
+    //         {
+    //             using (var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, uri))
+    //             {
+    //                 req.Headers.UserAgent.ParseAdd("NoodlesUnityClient/1.0");
+    //                 req.Headers.Accept.ParseAdd("*/*");
+
+    //                 var resp = http.SendAsync(req).GetAwaiter().GetResult();
+    //                 var status = (int)resp.StatusCode;
+    //                 var bytes = resp.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
+
+    //                 if (status >= 200 && status < 300)
+    //                 {
+    //                     Debug.Log($"HTTP {status} {uri} bytes={bytes?.Length ?? 0}");
+    //                     return new ReadOnlyMemory<byte>(bytes);
+    //                 }
+
+    //                 // Log the HTTP error.
+    //                 string bodyPreview = "";
+    //                 try { bodyPreview = System.Text.Encoding.UTF8.GetString(bytes, 0, Math.Min(bytes.Length, 256)); } catch { }
+    //                 Debug.LogError($"HTTP {status} for {uri}. Body<=256: {bodyPreview}");
+    //                 // If a non-success status code is received, decide whether to retry
+    //             }
+    //         }
+    //         catch (Exception ex)
+    //         {
+    //             Debug.LogError($"Fetch error {uri}: {ex.Message}");
+    //             if (attempt == maxRetries - 1)
+    //             {
+    //                 // Re-throw on the final attempt
+    //                 throw;
+    //             }
+    //         }
+
+    //         // Optionally log the retry attempt
+    //         Debug.Log($"Retrying {uri} (Attempt {attempt + 1}/{maxRetries})...");
+    //     }
+
+    //     return ReadOnlyMemory<byte>.Empty; // Return if all attempts fail
+    // }
 
 
 
@@ -432,27 +484,30 @@ public class NOODLESRoot : MonoBehaviour
         // scan messages for buffer downloads so we can start pulling them down
         int cursor = 0;
 
-        while (cursor < message.Count) {
-            var id = message[cursor].AsInt32();
-            var content = message[cursor+1];
+        while (cursor < message.Count)
+        {
+            int id = message[cursor].AsInt32();
+            CBORObject content = message[cursor + 1];
 
-            // should be BufferCreate and ImageCreate that can point to remote resources
-            switch (id) {
+            switch (id)
+            {
                 case 10:
                     NooTools.ActionOnContent("uri_bytes", content, value =>
                     {
-                        string uri_target = value.AsString();
-                        fetched_urls[uri_target] = TryFetch(uri_target);
+                        string uri = value.AsString();
+                        EnsureFetchStarted(uri);
                     });
                     break;
+
                 case 17:
                     NooTools.ActionOnContent("uri_source", content, value =>
                     {
-                        string uri_target = value.AsString();
-                        fetched_urls[uri_target] = TryFetch(uri_target);
+                        string uri = value.AsString();
+                        EnsureFetchStarted(uri);
                     });
                     break;
             }
+
             cursor += 2;
         }
 
@@ -475,19 +530,29 @@ public class NOODLESRoot : MonoBehaviour
     /// <param name="uri">URI to look for</param>
     /// <returns>Buffer for given URI</returns>
     /// <exception cref="NullReferenceException">if URI has not been fetched</exception>
-    public ReadOnlyMemory<byte> BufferCacheGet(string uri) {
-        if (Cache.Has(uri)) {
+    public ReadOnlyMemory<byte> BufferCacheGet(string uri)
+    {
+        if (Cache.Has(uri))
+        {
             return Cache.Fetch(uri);
         }
 
-        if (fetched_urls.TryRemove(uri, out var data))   // CHANGE 2
+        EnsureFetchStarted(uri);
+
+        if (fetchTasks.TryGetValue(uri, out Task<ReadOnlyMemory<byte>> task))
         {
-            Cache.Install(uri, data);
-            return data;
+            // Wait a bit so join-time asset creation doesn't race the download.
+            if (task.Wait(2000))
+            {
+                ReadOnlyMemory<byte> data = task.Result;
+                Cache.Install(uri, data);
+                fetchTasks.TryRemove(uri, out _);
+                return data;
+            }
         }
-        
+
         Debug.LogWarning($"Missing buffer for {uri}");
-        return ReadOnlyMemory<byte>.Empty;   // returning empty instead of garbage
+        return ReadOnlyMemory<byte>.Empty;
     }
 
     public void BufferCacheRelease(string uri) {
