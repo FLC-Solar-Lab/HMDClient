@@ -2021,6 +2021,11 @@ public class MaterialComponent : INoodlesComponent
         CommonUpdate(root, content);
     }
 
+    public void OnUpdate(NOODLESRoot root, CBORObject content)
+    {
+        CommonUpdate(root, content);
+    }
+
     public void OnDelete(NOODLESRoot root)
     {
         //Debug.Log("Destroying material");
