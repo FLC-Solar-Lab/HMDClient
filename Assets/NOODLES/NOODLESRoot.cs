@@ -365,20 +365,33 @@ public class NOODLESRoot : MonoBehaviour
 
             //Debug.Log(string.Format("Message: {0} => {1}", id, content));
 
+            int msgIndex = cursor / 2;
+
             try
             {
-                if (id <= 30){
-                    components_pack.Handle(this, id, content);
-                } else {
-                    HandleNonComponentMessage(id, content);
-                }
+                if (id <= 30) components_pack.Handle(this, id, content);
+                else HandleNonComponentMessage(id, content);
             }
             catch (System.Exception e)
             {
+                string keys = "";
+                if (content != null && content.Type == CBORType.Map)
+                {
+                    // list keys to see if "id"/"transform"/etc exist
+                    try {
+                        var klist = new System.Text.StringBuilder();
+                        foreach (var k in content.Keys) klist.Append(k.ToString()).Append(" ");
+                        keys = klist.ToString();
+                    } catch { keys = "<keys failed>"; }
+                }
+
+                Debug.LogError(
+                    $"[NOODLES] Exception handling msgIndex={msgIndex} id={id} " +
+                    $"frame={Time.frameCount} time={Time.time:F3} " +
+                    $"contentType={content?.Type.ToString() ?? "null"} keys={keys} " +
+                    $"content={content}"
+                );
                 Debug.LogException(e);
-                Debug.LogError("Error handling " + id + " content " + content.ToString());
-                // throw;   // Do not crash whole system
-                // TODO MAYBE HANDLE THIS EXCEPTION SOMEHOW
             }
            
             cursor += 2;
@@ -2094,6 +2107,8 @@ public class TextureComponent : INoodlesComponent
 
     public void OnDelete(NOODLESRoot root)
     {
+        if (texture != null) UnityEngine.Object.Destroy(texture);
+        texture = null;
     }
 }
 
@@ -2239,17 +2254,28 @@ class EntityComponent : INoodlesComponent
     public void OnUpdate(NOODLESRoot root, CBORObject content) {
         //Debug.Log("Updating component: ");
 
-        CommonUpdate(root, content);
-
-        if (managed_object != null){
-            root.FireOnEntityUpdated(managed_object, content);
+        if (managed_object == null)
+        {
+            var id = NooTools.IDFromContent(content);
+            Debug.LogWarning($"[NOODLES][Entity] UPDATE with null managed_object. Recreating. entity={id.slot}/{id.gen} name={NooTools.name_from_content(content,"Entity")}");
+            
+            managed_object = new GameObject(NooTools.name_from_content(content, "Entity (recovered)"));
+            managed_object.transform.parent = root.transform; // default; parent handler may override below
+            root.FireOnEntityCreated(managed_object, content);
         }
+
+        CommonUpdate(root, content);
+        root.FireOnEntityUpdated(managed_object, content);
     }
 
     public void OnDelete(NOODLESRoot root)
     {
-        //Debug.Log("Destroying entity");
-        GameObject.Destroy(managed_object);
+        Debug.Log("Destroying entity");
+        // GameObject.Destroy(managed_object);
+
+        if (managed_object != null) GameObject.Destroy(managed_object);
+        managed_object = null;
+        ClearChildren();
     }
 }
 
