@@ -555,7 +555,7 @@ public class NOODLESRoot : MonoBehaviour
         if (fetchTasks.TryGetValue(uri, out Task<ReadOnlyMemory<byte>> task))
         {
             // Wait a bit so join-time asset creation doesn't race the download.
-            if (task.Wait(2000))
+            if (task.Wait(2000))    // TODO THIS IS WHAT IS CAUSING HANGS!!! (duh...)
             {
                 ReadOnlyMemory<byte> data = task.Result;
                 Cache.Install(uri, data);
