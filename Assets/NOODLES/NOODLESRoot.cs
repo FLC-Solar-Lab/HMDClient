@@ -64,6 +64,12 @@ public class NOODLESRoot : MonoBehaviour
     readonly ClientWebSocket ws;
 
     /// <summary>
+    /// Reusable HTTP client
+    /// </summary>
+    readonly static System.Net.Http.HttpClient http = new System.Net.Http.HttpClient();
+
+
+    /// <summary>
     /// Task that continually reads from the websocket
     /// </summary>
     Task? read_task;
@@ -109,6 +115,14 @@ public class NOODLESRoot : MonoBehaviour
     public Shader? newMaterialShader;
 
 
+
+    // Sephamore Stuff
+    private readonly SemaphoreSlim writeSig = new SemaphoreSlim(0);
+    private CancellationTokenSource? cts;
+    private readonly SemaphoreSlim httpSlots = new SemaphoreSlim(4); // limit concurrent HTTP per client
+    private readonly ConcurrentDictionary<string, Task<ReadOnlyMemory<byte>>> fetchTasks = new ConcurrentDictionary<string, Task<ReadOnlyMemory<byte>>>();
+
+
     public event EntityChangeDelegate? OnEntityCreated;
     public event EntityChangeDelegate? OnEntityUpdated;
 
@@ -120,6 +134,7 @@ public class NOODLESRoot : MonoBehaviour
         Cache = new();
         components_pack = new();
         message_response = new();
+        cts = new CancellationTokenSource();
     }
 
     public void FireOnEntityCreated(GameObject obj, CBORObject content) {
@@ -151,14 +166,11 @@ public class NOODLESRoot : MonoBehaviour
         // send opening message
         SendMessage(new Introduction("Unity Client"));
 
-        // start socket read task
-        read_task = new Task(() => ReadMessagesTask());
-        read_task.Start();
+        cts = new CancellationTokenSource();
+    	read_task = Task.Run(() => ReadMessagesTask(cts.Token));
+    	write_task = Task.Run(() => WriteMessagesTask(cts.Token));
 
-        write_task = new Task(() => WriteMessagesTask());
-        write_task.Start();
-
-        //Debug.Log("Startup complete");
+        Debug.Log("Startup complete");
     }
     /// <summary>
     /// Dispatch a message to the server. This should be called from the main thread.
@@ -171,32 +183,166 @@ public class NOODLESRoot : MonoBehaviour
 
         // tuples are primitive here so we have to do this the bad way
         outgoing_messages.Enqueue(CBORObject.NewArray().Add(message.MessageId()).Add(message.ToCBOR()));
+        writeSig.Release();
     }
+
+    private async void OnDestroy()
+{
+    if (cts != null)
+    {
+        cts.Cancel();
+        try
+        {
+            if (read_task != null) await read_task;
+            if (write_task != null) await write_task;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogException(ex);
+        }
+        cts.Dispose();
+    }
+    ws?.Dispose();
+    writeSig?.Dispose();
+}
 
     /// <summary>
     /// An async task to continually read from the websocket and pre-process incoming messages
     /// </summary>
-    async void ReadMessagesTask() {
+    private async Task ReadMessagesTask(CancellationToken token) {
         //Debug.Log("Starting read message task");
+        try{
+            while(!token.IsCancellationRequested) {
+                var message_array = await ReadNextMessage();
+                incoming_messages.Enqueue(message_array);
+            }
+        } catch(OperationCanceledException) {
 
-        while (true) {
-            var message_array = await ReadNextMessage();
-
-            incoming_messages.Enqueue(message_array);
+        } catch (Exception e) {
+            Debug.LogException(e);
         }
     }
 
-    async void WriteMessagesTask() {
-        while (true) {
-            if (outgoing_messages.TryDequeue(out CBORObject message)) {
-                var bytes = message.EncodeToBytes();
-                await ws.SendAsync(bytes, WebSocketMessageType.Binary, true, CancellationToken.None);
-            } else {
-                // cmon now. surely we can do better
-                await Task.Delay(16);
+    private async Task WriteMessagesTask(CancellationToken token)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                await writeSig.WaitAsync(token);
+                while (outgoing_messages.TryDequeue(out CBORObject message))
+                {
+                    var bytes = message.EncodeToBytes();
+                    await ws.SendAsync(bytes, WebSocketMessageType.Binary, true, token);
+                }
             }
         }
+        catch (OperationCanceledException)
+        {
+            Debug.Log("WriteMessagesTask cancelled.");
+        }
+        catch (Exception e)
+        {
+            Debug.LogException(e);
+        }
     }
+
+    private void EnsureFetchStarted(string uri)
+    {
+        fetchTasks.GetOrAdd(uri, _ => Task.Run(async () =>
+        {
+            await httpSlots.WaitAsync();
+            try
+            {
+                return await FetchAsync(uri);
+            }
+            finally
+            {
+                httpSlots.Release();
+            }
+        }));
+    }
+
+    private static async Task<ReadOnlyMemory<byte>> FetchAsync(string uri, int maxRetries = 10)
+    {
+        for (int attempt = 0; attempt < maxRetries; attempt++)
+        {
+            try
+            {
+                using (var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, uri))
+                {
+                    req.Headers.UserAgent.ParseAdd("NoodlesUnityClient/1.0");
+                    req.Headers.Accept.ParseAdd("*/*");
+
+                    using (var resp = await http.SendAsync(req))
+                    {
+                        int status = (int)resp.StatusCode;
+                        byte[] bytes = await resp.Content.ReadAsByteArrayAsync();
+
+                        if (status >= 200 && status < 300)
+                        {
+                            return new ReadOnlyMemory<byte>(bytes);
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // retry
+            }
+
+            await Task.Delay(25);
+        }
+
+        return ReadOnlyMemory<byte>.Empty;
+    }
+
+    // private ReadOnlyMemory<byte> TryFetch(string uri, int maxRetries = 10)
+    // {
+    //     for (int attempt = 0; attempt < maxRetries; attempt++)
+    //     {
+    //         try
+    //         {
+    //             using (var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, uri))
+    //             {
+    //                 req.Headers.UserAgent.ParseAdd("NoodlesUnityClient/1.0");
+    //                 req.Headers.Accept.ParseAdd("*/*");
+
+    //                 var resp = http.SendAsync(req).GetAwaiter().GetResult();
+    //                 var status = (int)resp.StatusCode;
+    //                 var bytes = resp.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
+
+    //                 if (status >= 200 && status < 300)
+    //                 {
+    //                     Debug.Log($"HTTP {status} {uri} bytes={bytes?.Length ?? 0}");
+    //                     return new ReadOnlyMemory<byte>(bytes);
+    //                 }
+
+    //                 // Log the HTTP error.
+    //                 string bodyPreview = "";
+    //                 try { bodyPreview = System.Text.Encoding.UTF8.GetString(bytes, 0, Math.Min(bytes.Length, 256)); } catch { }
+    //                 Debug.LogError($"HTTP {status} for {uri}. Body<=256: {bodyPreview}");
+    //                 // If a non-success status code is received, decide whether to retry
+    //             }
+    //         }
+    //         catch (Exception ex)
+    //         {
+    //             Debug.LogError($"Fetch error {uri}: {ex.Message}");
+    //             if (attempt == maxRetries - 1)
+    //             {
+    //                 // Re-throw on the final attempt
+    //                 throw;
+    //             }
+    //         }
+
+    //         // Optionally log the retry attempt
+    //         Debug.Log($"Retrying {uri} (Attempt {attempt + 1}/{maxRetries})...");
+    //     }
+
+    //     return ReadOnlyMemory<byte>.Empty; // Return if all attempts fail
+    // }
+
+
 
     /// <summary>
     /// Consume a message array from the server and handle each message. This must be run from the main thread.
@@ -219,20 +365,33 @@ public class NOODLESRoot : MonoBehaviour
 
             //Debug.Log(string.Format("Message: {0} => {1}", id, content));
 
+            int msgIndex = cursor / 2;
+
             try
             {
-
-                if (id <= 30){
-                    components_pack.Handle(this, id, content);
-                } else {
-                    HandleNonComponentMessage(id, content);
-                }
+                if (id <= 30) components_pack.Handle(this, id, content);
+                else HandleNonComponentMessage(id, content);
             }
             catch (System.Exception e)
             {
+                string keys = "";
+                if (content != null && content.Type == CBORType.Map)
+                {
+                    // list keys to see if "id"/"transform"/etc exist
+                    try {
+                        var klist = new System.Text.StringBuilder();
+                        foreach (var k in content.Keys) klist.Append(k.ToString()).Append(" ");
+                        keys = klist.ToString();
+                    } catch { keys = "<keys failed>"; }
+                }
+
+                Debug.LogError(
+                    $"[NOODLES] Exception handling msgIndex={msgIndex} id={id} " +
+                    $"frame={Time.frameCount} time={Time.time:F3} " +
+                    $"contentType={content?.Type.ToString() ?? "null"} keys={keys} " +
+                    $"content={content}"
+                );
                 Debug.LogException(e);
-                Debug.LogError("Error handling " + id + " content " + content.ToString());
-                throw;
             }
            
             cursor += 2;
@@ -338,34 +497,30 @@ public class NOODLESRoot : MonoBehaviour
         // scan messages for buffer downloads so we can start pulling them down
         int cursor = 0;
 
-        while (cursor < message.Count) {
-            var id = message[cursor].AsInt32();
-            var content = message[cursor+1];
+        while (cursor < message.Count)
+        {
+            int id = message[cursor].AsInt32();
+            CBORObject content = message[cursor + 1];
 
-            // should be BufferCreate and ImageCreate that can point to remote resources
-            switch (id) {
+            switch (id)
+            {
                 case 10:
-                    NooTools.ActionOnContent("uri_bytes", content, (CBORObject value) => {
-                        string uri_target = value.AsString();
-                        var client = new System.Net.Http.HttpClient();
-
-                        var request = Task.Run( () => client.GetByteArrayAsync(uri_target) ).Result;
-
-                        fetched_urls[uri_target] = new ReadOnlyMemory<byte>(request);
+                    NooTools.ActionOnContent("uri_bytes", content, value =>
+                    {
+                        string uri = value.AsString();
+                        EnsureFetchStarted(uri);
                     });
                     break;
+
                 case 17:
-                    NooTools.ActionOnContent("uri_source", content, (CBORObject value) => {
-                        string uri_target = value.AsString();
-                        var client = new System.Net.Http.HttpClient();
-
-                        var request = Task.Run( () => client.GetByteArrayAsync(uri_target) ).Result;
-
-                        fetched_urls[uri_target] = new ReadOnlyMemory<byte>(request);
+                    NooTools.ActionOnContent("uri_source", content, value =>
+                    {
+                        string uri = value.AsString();
+                        EnsureFetchStarted(uri);
                     });
                     break;
             }
-           
+
             cursor += 2;
         }
 
@@ -388,19 +543,29 @@ public class NOODLESRoot : MonoBehaviour
     /// <param name="uri">URI to look for</param>
     /// <returns>Buffer for given URI</returns>
     /// <exception cref="NullReferenceException">if URI has not been fetched</exception>
-    public ReadOnlyMemory<byte> BufferCacheGet(string uri) {
-        if (Cache.Has(uri)) {
+    public ReadOnlyMemory<byte> BufferCacheGet(string uri)
+    {
+        if (Cache.Has(uri))
+        {
             return Cache.Fetch(uri);
         }
 
-        if (!fetched_urls.TryRemove(uri, out ReadOnlyMemory<byte> data)) {
-            Debug.LogWarning(string.Format("Unable to find buffer: {0}", uri));
-            throw new NullReferenceException("Missing buffer");
+        EnsureFetchStarted(uri);
+
+        if (fetchTasks.TryGetValue(uri, out Task<ReadOnlyMemory<byte>> task))
+        {
+            // Wait a bit so join-time asset creation doesn't race the download.
+            if (task.Wait(2000))    // TODO THIS IS WHAT IS CAUSING HANGS!!! (duh...)
+            {
+                ReadOnlyMemory<byte> data = task.Result;
+                Cache.Install(uri, data);
+                fetchTasks.TryRemove(uri, out _);
+                return data;
+            }
         }
 
-        Cache.Install(uri, data);
-
-        return data;
+        Debug.LogWarning($"Missing buffer for {uri}");
+        return ReadOnlyMemory<byte>.Empty;
     }
 
     public void BufferCacheRelease(string uri) {
@@ -710,12 +875,29 @@ public class ComponentList {
     }
 
     public void Insert(NOODLESRoot root, NooID place, INoodlesComponent comp, CBORObject content) {
-        component_collection.Add(place, comp);
-        comp.OnCreate(root, content);
+        // when inserting a component, ensure does not have same key.
+        if (!component_collection.ContainsKey(place))
+        {
+            component_collection.Add(place, comp);
+            comp.OnCreate(root, content);
+        } 
+        else
+        {
+            Debug.LogWarning("DEBUG: Attempted to add a duplicate key to dictionary!");   
+        }       
+
+        
     }
 
     public void Update(NOODLESRoot root, NooID place, CBORObject content) {
-        component_collection[place].OnUpdate(root, content);
+        if (component_collection.TryGetValue(place, out var comp))
+        {
+            comp.OnUpdate(root, content);
+        }
+        else
+        {
+            Debug.LogWarning($"Update on missing component {place.slot}/{place.gen}");
+        }
     }
 
     public void Remove(NOODLESRoot root, NooID place) {
@@ -808,7 +990,18 @@ public class ComponentPack {
                 clist.Insert(root, id, new_component, content);
                 break;
             case ComponentAction.Update: 
-                clist.Update(root, id, content);
+                var existing = clist.Get(id);
+                if (existing != null)
+                {
+                    clist.Update(root, id, content);
+                }
+                else
+                {
+                    // Create on first sight if server sent UPDATE before CREATE
+                    var new_comp = NooTools.MakeNewComponent(component);   // this migh work
+                    clist.Insert(root, id, new_comp, content);
+                    Debug.LogWarning($"Auto-created {component} {id.slot}/{id.gen} on UPDATE");
+                }
                 break;
             case ComponentAction.Delete: 
                 clist.Remove(root, id);
@@ -1061,7 +1254,10 @@ public class BufferViewComponent : INoodlesComponent
         offset = content["offset"].ToObject<long>();
         length = content["length"].ToObject<long>();
 
-        storage ??= buffer!.GetBytes().Slice((int)offset, (int)length);
+        var src = buffer!.GetBytes();
+        if (src.IsEmpty) { Debug.LogWarning("BufferView: empty source"); return; }
+
+        storage ??= src.Slice((int)offset, (int)length);
 
         if (storage == null) {
             Debug.LogError("Source buffer is null!");
@@ -1077,9 +1273,10 @@ public class BufferViewComponent : INoodlesComponent
         //Debug.Log("Destroying bufferview");
     }
 
-    public ReadOnlyMemory<byte> GetBytes() {
-        Assert.IsTrue(storage != null);
-        return storage ?? new ReadOnlyMemory<byte>(); 
+    public ReadOnlyMemory<byte> GetBytes()
+    {
+        // Assert.IsTrue(storage != null);
+        return storage ?? ReadOnlyMemory<byte>.Empty;
     }
 }
 
@@ -1376,7 +1573,12 @@ public class GeometryComponent : INoodlesComponent
             var stride = NooTools.TypedFromContent("stride", index_info, 0);
             var format = index_info["format"].AsString();
 
-            var bytes = buffer_view.GetBytes()[offset..];
+            var all = buffer_view.GetBytes();
+            if (all.IsEmpty) {
+                Debug.LogWarning("Geom: empty indices");
+                return; 
+            }
+            var bytes = all[offset..];
 
             new_mesh.indexFormat = IndexFormat.UInt16;
 
@@ -1553,7 +1755,9 @@ public class GeometryComponent : INoodlesComponent
             foreach (var att in stream_pack.Value) {
                 var view = (BufferViewComponent)root.GetNoodlesComponent(ComponentType.BufferView, att.buffer_view)!;
                 var data = view.GetBytes();
+                if (data.IsEmpty) { Debug.LogWarning("Geom: empty attr"); continue; }
                 data = data[att.offset..];
+
 
                 switch (att.semantic) {
                     case "POSITION":
@@ -1635,6 +1839,10 @@ public class GeometryComponent : INoodlesComponent
         {
             var buffer_view = (BufferViewComponent)root.GetNoodlesComponent(ComponentType.BufferView, stream.Key)!;
             var bytes = buffer_view.GetBytes();
+            if (bytes.IsEmpty) {
+                Debug.LogWarning("Geom: empty interleaved stream");
+                continue; 
+            }
 
             var vertex_size = stream_stride[stream.Value];
 
@@ -1813,6 +2021,11 @@ public class MaterialComponent : INoodlesComponent
         CommonUpdate(root, content);
     }
 
+    public void OnUpdate(NOODLESRoot root, CBORObject content)
+    {
+        CommonUpdate(root, content);
+    }
+
     public void OnDelete(NOODLESRoot root)
     {
         //Debug.Log("Destroying material");
@@ -1838,6 +2051,7 @@ public class ImageComponent : INoodlesComponent
     public void OnCreate(NOODLESRoot root, CBORObject content)
     {
         //Debug.Log("Creating new Image: " +  NooTools.name_from_content(content, "Image"));
+        bytes = ReadOnlyMemory<byte>.Empty;
 
         NooTools.ActionOnContent("buffer_source", content, (CBORObject value) => {
             var view_id = NooID.FromCBOR(value);
@@ -1845,10 +2059,13 @@ public class ImageComponent : INoodlesComponent
             bytes = view.GetBytes();
         });
 
-        NooTools.ActionOnContent("uri_source", content, (CBORObject value) => {
+        NooTools.ActionOnContent("uri_source", content, (CBORObject value) =>
+        {
             cached_buffer = value.AsString();
             bytes = root.BufferCacheGet(cached_buffer);
         });
+        
+        if (bytes.IsEmpty) Debug.LogWarning("Image: no bytes");
     }
 
     public void OnDelete(NOODLESRoot root)
@@ -1879,16 +2096,24 @@ public class TextureComponent : INoodlesComponent
     public void OnCreate(NOODLESRoot root, CBORObject content)
     {
         //Debug.Log("Creating new Texture: " +  NooTools.name_from_content(content, "Texture"));
-
         var image_id = NooID.FromCBOR(content["image"]);
         var image = (ImageComponent)root.GetNoodlesComponent(ComponentType.Image, image_id)!;
-        texture = new Texture2D(2, 2); // dims will be resized
-        texture.LoadImage(image.GetBytes().ToArray());
+
+        var mem = image.GetBytes();
+        if (mem.IsEmpty) {
+            Debug.LogWarning("Texture: image bytes empty; delaying texture creation");
+            return;
+        }
+
+        texture = new Texture2D(2, 2);
+        texture.LoadImage(mem.ToArray());
         texture.wrapMode = TextureWrapMode.Clamp;
     }
 
     public void OnDelete(NOODLESRoot root)
     {
+        if (texture != null) UnityEngine.Object.Destroy(texture);
+        texture = null;
     }
 }
 
@@ -1955,10 +2180,10 @@ class EntityComponent : INoodlesComponent
             position.z *= -1;
 
             //Debug.Log(string.Format("AFTER {0} {1} {2}", position, rotation, mat.lossyScale));
-
-            var tf = managed_object!.transform;
-            tf.SetLocalPositionAndRotation(position, rotation);
-            tf.localScale = mat.lossyScale;
+            
+            // NOTE: changed the following code to use current instance of transform, instead of expired old reference.
+            managed_object!.transform.SetLocalPositionAndRotation(position, rotation);
+            managed_object!.transform.localScale = mat.lossyScale;
         });
 
         NooTools.ActionOnContent("visible", content, 
@@ -2034,17 +2259,28 @@ class EntityComponent : INoodlesComponent
     public void OnUpdate(NOODLESRoot root, CBORObject content) {
         //Debug.Log("Updating component: ");
 
-        CommonUpdate(root, content);
-
-        if (managed_object != null){
-            root.FireOnEntityUpdated(managed_object, content);
+        if (managed_object == null)
+        {
+            var id = NooTools.IDFromContent(content);
+            Debug.LogWarning($"[NOODLES][Entity] UPDATE with null managed_object. Recreating. entity={id.slot}/{id.gen} name={NooTools.name_from_content(content,"Entity")}");
+            
+            managed_object = new GameObject(NooTools.name_from_content(content, "Entity (recovered)"));
+            managed_object.transform.parent = root.transform; // default; parent handler may override below
+            root.FireOnEntityCreated(managed_object, content);
         }
+
+        CommonUpdate(root, content);
+        root.FireOnEntityUpdated(managed_object, content);
     }
 
     public void OnDelete(NOODLESRoot root)
     {
-        //Debug.Log("Destroying entity");
-        GameObject.Destroy(managed_object);
+        Debug.Log("Destroying entity");
+        // GameObject.Destroy(managed_object);
+
+        if (managed_object != null) GameObject.Destroy(managed_object);
+        managed_object = null;
+        ClearChildren();
     }
 }
 
