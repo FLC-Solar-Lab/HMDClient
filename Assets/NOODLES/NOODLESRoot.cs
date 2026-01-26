@@ -249,7 +249,7 @@ public class NOODLESRoot : MonoBehaviour
 
     private void EnsureFetchStarted(string uri)
     {
-        fetchTasks.GetOrAdd(uri, _ => Task.Run(async () =>
+        var task = fetchTasks.GetOrAdd(uri, _ => Task.Run(async () =>
         {
             await httpSlots.WaitAsync();
             try
@@ -261,6 +261,11 @@ public class NOODLESRoot : MonoBehaviour
                 httpSlots.Release();
             }
         }));
+
+        task.ContinueWith(t =>
+        {
+            fetchTasks.TryRemove(uri, out _);
+        }, TaskScheduler.Default);
     }
 
     private static async Task<ReadOnlyMemory<byte>> FetchAsync(string uri, int maxRetries = 10)
@@ -554,12 +559,11 @@ public class NOODLESRoot : MonoBehaviour
 
         if (fetchTasks.TryGetValue(uri, out Task<ReadOnlyMemory<byte>> task))
         {
-            // Wait a bit so join-time asset creation doesn't race the download.
-            if (task.Wait(2000))    // TODO THIS IS WHAT IS CAUSING HANGS!!! (duh...)
+            // Check if task is completed, if not return empty memory.
+            if (task.IsCompletedSuccessfully)
             {
                 ReadOnlyMemory<byte> data = task.Result;
                 Cache.Install(uri, data);
-                fetchTasks.TryRemove(uri, out _);
                 return data;
             }
         }
