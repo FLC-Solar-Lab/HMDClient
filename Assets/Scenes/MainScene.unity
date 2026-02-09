@@ -171,6 +171,7 @@ MonoBehaviour:
   trackedObject: {fileID: 1533458883}
   aruco_id: 2
   vrpn_id: Origin
+  simulatedController: {fileID: 0}
 --- !u!1001 &61763479
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -596,7 +597,11 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 5589497133593145652, guid: fe799b2d0a84dfe43b001b56276fd2fb,
+        type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1525705761}
   m_SourcePrefab: {fileID: 100100000, guid: fe799b2d0a84dfe43b001b56276fd2fb, type: 3}
 --- !u!1 &573403226
 GameObject:
@@ -1103,6 +1108,56 @@ Camera:
     type: 3}
   m_PrefabInstance: {fileID: 380222019}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &1525705759 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 5589497133593145652, guid: fe799b2d0a84dfe43b001b56276fd2fb,
+    type: 3}
+  m_PrefabInstance: {fileID: 380222019}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &1525705761
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1525705759}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_RenderShadows: 1
+  m_RequiresDepthTextureOption: 2
+  m_RequiresOpaqueTextureOption: 2
+  m_CameraType: 0
+  m_Cameras: []
+  m_RendererIndex: -1
+  m_VolumeLayerMask:
+    serializedVersion: 2
+    m_Bits: 1
+  m_VolumeTrigger: {fileID: 0}
+  m_VolumeFrameworkUpdateModeOption: 2
+  m_RenderPostProcessing: 0
+  m_Antialiasing: 0
+  m_AntialiasingQuality: 2
+  m_StopNaN: 0
+  m_Dithering: 0
+  m_ClearDepth: 1
+  m_AllowXRRendering: 1
+  m_AllowHDROutput: 1
+  m_UseScreenCoordOverride: 0
+  m_ScreenSizeOverride: {x: 0, y: 0, z: 0, w: 0}
+  m_ScreenCoordScaleBias: {x: 0, y: 0, z: 0, w: 0}
+  m_RequiresDepthTexture: 0
+  m_RequiresColorTexture: 0
+  m_Version: 2
+  m_TaaSettings:
+    m_Quality: 3
+    m_FrameInfluence: 0.1
+    m_JitterScale: 1
+    m_MipBias: 0
+    m_VarianceClampScale: 0.9
+    m_ContrastAdaptiveSharpening: 0
 --- !u!1 &1533458883 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 3790276207035758998, guid: 068f16b9fa64443fa8700a911c87626e,
@@ -1154,7 +1209,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4a20db0f6e7f04f01997cecaaa6de24a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  serverURI: ws://10.16.10.137:50004
+  serverURI: ws://192.168.1.211:50002
   newMaterialShader: {fileID: 4800000, guid: 933532a4fcc9baf4fa0491de14d08ed7, type: 3}
 --- !u!1 &2115204461
 GameObject:

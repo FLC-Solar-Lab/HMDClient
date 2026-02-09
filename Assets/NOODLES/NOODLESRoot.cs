@@ -589,6 +589,25 @@ public class NOODLESRoot : MonoBehaviour
         
     }
 
+    public bool TryInvokeMethodByName(String name, List<CBORObject> args, MessageReplyDelegate del) {
+        var component_and_id = components_pack.TryGetNoodlesComponentByName(ComponentType.Method, name);
+        if (component_and_id != null)
+        {
+            var id = component_and_id.Value.Item2;
+            invoke_method(id, null, args, del);
+            return true;
+        }
+        return false;
+    }
+
+    public bool HasMethod(String name) {
+        return components_pack.TryGetNoodlesComponentByName(ComponentType.Method, name) != null;
+    }
+
+    public bool HasAnyMethods() {
+        return components_pack.HasAny(ComponentType.Method);
+    }
+
     public void invoke_method(NooID methodid, NooID? entityid, List<CBORObject> args, MessageReplyDelegate del) {
         //Debug.Log("INVOKE METHOD IMPL");
         // omit check to see if method is on the entity. hopefully we just dont do that.
@@ -874,6 +893,24 @@ public class ComponentList {
         return null;
     }
 
+    public (INoodlesComponent, NooID)? TryGetByName(String name) {
+        foreach (var component_kv in component_collection) {
+            var maybe_comp_name = component_kv.Value.GetName();
+            string comp_name = "";
+            if (maybe_comp_name != null) {
+                comp_name = maybe_comp_name;
+            }
+            if (comp_name == name) {
+                return (component_kv.Value, component_kv.Key);
+            }
+        }
+        return null;
+    }
+
+    public bool HasAny() {
+        return component_collection.Count > 0;
+    }
+
     public void Insert(NOODLESRoot root, NooID place, INoodlesComponent comp, CBORObject content) {
         // when inserting a component, ensure does not have same key.
         if (!component_collection.ContainsKey(place))
@@ -945,6 +982,15 @@ public class ComponentPack {
     public (INoodlesComponent, NooID)? GetNoodlesComponentByName(ComponentType type, String name) {
         var component_list = components[(int) type];
         return component_list.GetByName(name);
+    }
+
+    public (INoodlesComponent, NooID)? TryGetNoodlesComponentByName(ComponentType type, String name) {
+        var component_list = components[(int) type];
+        return component_list.TryGetByName(name);
+    }
+
+    public bool HasAny(ComponentType type) {
+        return components[(int) type].HasAny();
     }
 
     /// <summary>
@@ -1985,19 +2031,10 @@ public class MaterialComponent : INoodlesComponent
             NooTools.ActionOnContent("base_color_texture", obj, (CBORObject value) => {
                 //Debug.Log("Found texture for material");
                 var tex_ref = GetTextureRef(root, value);
-                if (tex_ref.texture != null) {
-                    material.SetTexture(base_color_map_id, tex_ref.texture.GetTexture());
+                if (tex_ref.texture != null && tex_ref.texture.TryGetTexture(root, out var tex) && tex != null) {
+                    material.SetTexture(base_color_map_id, tex);
                     material.SetTextureScale(base_color_map_id, new Vector2(1, -1));
                     material.SetTextureOffset(base_color_map_id, new Vector2(0, 1));
-                } else {
-                    Debug.LogWarning("Texture is null!");
-                }
-                if (tex_ref.texture != null) {
-                    material.SetTexture(base_color_map_id, tex_ref.texture.GetTexture());
-                    material.SetTextureScale(base_color_map_id, new Vector2(1, -1));
-                    material.SetTextureOffset(base_color_map_id, new Vector2(0, 1));
-                } else {
-                    Debug.LogWarning("Texture is null!");
                 }
             });
         });
@@ -2082,21 +2119,35 @@ public class ImageComponent : INoodlesComponent
 public class TextureComponent : INoodlesComponent
 {
     Texture2D? texture;
+    NooID image_id;
 
     public TextureComponent() {
     }
 
-    public Texture2D GetTexture() {
-        if (texture != null){
-            return texture;
+    public bool TryGetTexture(NOODLESRoot root, out Texture2D? value) {
+        if (texture != null) {
+            value = texture;
+            return true;
         }
-        throw new NullReferenceException("Missing texture");
+
+        var image = (ImageComponent)root.GetNoodlesComponent(ComponentType.Image, image_id)!;
+        var mem = image.GetBytes();
+        if (mem.IsEmpty) {
+            value = null;
+            return false;
+        }
+
+        texture = new Texture2D(2, 2);
+        texture.LoadImage(mem.ToArray());
+        texture.wrapMode = TextureWrapMode.Clamp;
+        value = texture;
+        return true;
     }
 
     public void OnCreate(NOODLESRoot root, CBORObject content)
     {
         //Debug.Log("Creating new Texture: " +  NooTools.name_from_content(content, "Texture"));
-        var image_id = NooID.FromCBOR(content["image"]);
+        image_id = NooID.FromCBOR(content["image"]);
         var image = (ImageComponent)root.GetNoodlesComponent(ComponentType.Image, image_id)!;
 
         var mem = image.GetBytes();
