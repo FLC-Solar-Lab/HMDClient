@@ -8,11 +8,13 @@ using UnityEngine.InputSystem;
 using PeterO.Cbor;
 using System.Collections.Generic; // Required for Queue
 
-[SerializeField] private int windowSize = 10; // Number of frames to average over
-private Queue<Vector3> positionBuffer = new Queue<Vector3>();
 
 public class TripleTracker : MonoBehaviour
 {
+
+    [SerializeField] private int windowSize = 10; // Number of frames to average over
+    private Queue<Vector3> positionBuffer = new Queue<Vector3>();
+
     public GameObject trackedObject;
 
     // marker settings
