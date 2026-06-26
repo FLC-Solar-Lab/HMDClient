@@ -168,9 +168,21 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8ecf6964d308948c8b3e629caa72ec99, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  windowSize: 10
   trackedObject: {fileID: 1533458883}
-  aruco_id: 0
   vrpn_id: origin
+  markerDatabase:
+  - id: 0
+    positionOffset: {x: 0, y: 0, z: 0}
+    rotationOffset: {x: 0, y: 0, z: 0}
+  - id: 1
+    positionOffset: {x: 0, y: 0, z: 0.304}
+    rotationOffset: {x: 0, y: 0, z: 0}
+  - id: 2
+    positionOffset: {x: 0.304, y: 0, z: 0}
+    rotationOffset: {x: 0, y: 0, z: 0}
+  scanInterval: 0.1
+  holdToStopDuration: 1.5
 --- !u!1001 &61763479
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1237,5 +1249,5 @@ SceneRoots:
   m_Roots:
   - {fileID: 203844589}
   - {fileID: 380222019}
-  - {fileID: 39945711}
   - {fileID: 646446675}
+  - {fileID: 39945711}
