@@ -1905,6 +1905,32 @@ public static class MaterialExtensions {
         material.SetupQueueOverride(-1, (int)RenderQueue.AlphaTest - 1, -1);
     }
 
+    // Bonita peak additions -----------------------------
+    public static void SetURPTransparent(this Material m)
+    {
+        m.SetFloat("_Surface", 1f); // 0 = opaque, 1 = transparent
+        m.SetFloat("_Blend", 0f); // 0 = alpha blend
+        m.SetFloat(src_blend_id, (float)BlendMode.SrcAlpha);
+        m.SetFloat(dst_blend_id, (float)BlendMode.OneMinusSrcAlpha);
+        m.SetFloat(z_write, 0f);
+        m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        m.DisableKeyword("_ALPHATEST_ON");
+        m.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+        m.renderQueue = (int)RenderQueue.Transparent;
+    }
+    public static void SetURPOpaque(this Material m)
+    {
+        m.SetFloat("_Surface", 0f);
+        m.SetFloat(src_blend_id, (float)BlendMode.One);
+        m.SetFloat(dst_blend_id, (float)BlendMode.Zero);
+        m.SetFloat(z_write, 1f);
+        m.DisableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        m.DisableKeyword("_ALPHATEST_ON");
+        m.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+        m.renderQueue = (int)RenderQueue.Geometry;
+    }
+    // ---------------------------------------------
+
     public static void SetCutout(this Material material) {
         material.SetOverrideTag("RenderType", "TransparentCutout");
         material.SetFloat(src_blend_id, (float)BlendMode.One);
@@ -2002,9 +2028,25 @@ public class MaterialComponent : INoodlesComponent
             });
         });
 
+        // Bonita Peak Edits ---------------------------------------------------
+
+        // old  function:
+        //NooTools.ActionOnContent("use_alpha", content, (CBORObject value) => {
+        //    material!.SetCutout();
+        //});
+
+        // new transparency function:
         NooTools.ActionOnContent("use_alpha", content, (CBORObject value) => {
-            material!.SetCutout();
+            if (value.AsBoolean())
+            {
+                material!.SetURPTransparent();
+            }
+            else
+            {
+                material!.SetURPOpaque();
+            }
         });
+        // ----------------------------------
 
         NooTools.ActionOnContent("double_sided", content, (CBORObject value) => {
             // if we want to be correct, parse the value to a bool for people to turn this on or off, but for the moment...
