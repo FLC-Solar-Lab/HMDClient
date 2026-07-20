@@ -8,10 +8,9 @@ using UnityEngine.InputSystem;
 using PeterO.Cbor;
 using System.Collections.Generic; // Required for Queue
 
-
 public class TripleTracker : MonoBehaviour
 {
-    [SerializeField] private int windowSize = 10; 
+    [SerializeField] private int windowSize = 5; 
     private Queue<Vector3> positionBuffer = new Queue<Vector3>();
 
     public GameObject trackedObject;
@@ -64,24 +63,38 @@ public class TripleTracker : MonoBehaviour
 
     private void Start()
     {
-        //Debug.Log("OriginTracker::Start()");
-        // create a tracker settings object with variables defined above
         MLMarkerTracker.ArucoDictionaryName d = MLMarkerTracker.ArucoDictionaryName.DICT_5X5_100;
-        MLMarkerTracker.Profile profile = MLMarkerTracker.Profile.Accuracy;
-        // create a tracker settings object with variables defined above
-        MLMarkerTracker.TrackerSettings trackerSettings = MLMarkerTracker.TrackerSettings.Create(true, MLMarkerTracker.MarkerType.Aruco_April, 0.082f, d, 0.082f, profile);
+        MLMarkerTracker.TrackerSettings.CustomProfile customProfile = 
+            MLMarkerTracker.TrackerSettings.CustomProfile.Create(
+                MLMarkerTracker.FPSHint.Max,                       // high FPS processing
+                MLMarkerTracker.ResolutionHint.High,               // high resolution feed
+                MLMarkerTracker.CameraHint.World,                  // world tracking cameras
+                MLMarkerTracker.FullAnalysisIntervalHint.Max,      // process every frame fully
+                MLMarkerTracker.CornerRefineMethod.AprilTag,       // sub-pixel corner solver
+                true                                               // edge refinement pass enabled
+            );
 
-      //Initialize the MagicLeapInputs like you would Unity's default action map.
-       _magicLeapInputs = new MagicLeapInputs();
-       _magicLeapInputs.Enable();
-       //Initialize the ControllerActions based off the Magic Leap Input
-       _controllerActions = new MagicLeapInputs.ControllerActions(_magicLeapInputs);
+        MLMarkerTracker.TrackerSettings trackerSettings = MLMarkerTracker.TrackerSettings.Create(
+            true, 
+            MLMarkerTracker.MarkerType.Aruco_April, 
+            0.0f,                   // QR size set to 0 (Unused)
+            d, 
+            0.082f,                 // ArUco Size (8.2 cm)
+            MLMarkerTracker.Profile.Custom, 
+            customProfile
+        );
+    
+        // Initialize the MagicLeapInputs like you would Unity's default action map.
+        _magicLeapInputs = new MagicLeapInputs();
+        _magicLeapInputs.Enable();
+
+        // Initialize the ControllerActions based off the Magic Leap Input
+        _controllerActions = new MagicLeapInputs.ControllerActions(_magicLeapInputs);
        
-       // track both the press down and the release lift events of the trigger
-       _controllerActions.Trigger.started += HandleTriggerPressed;
-       _controllerActions.Trigger.canceled += HandleTriggerReleased;
-       //_controllerActions.Bumper.performed += HandleOnBumper;
-       _controllerActions.Bumper.canceled += HandleOnBumperRelease;
+        // track both the press down and the release lift events of the trigger
+        _controllerActions.Trigger.started += HandleTriggerPressed;
+        _controllerActions.Trigger.canceled += HandleTriggerReleased;
+        _controllerActions.Bumper.canceled += HandleOnBumperRelease;
 
         trackedObject.SetActive(true);
         trackedObject.transform.GetChild(4).gameObject.GetComponent<TextMeshPro>().text = "Release Trigger when aligned with the FLC ORIGIN";
@@ -93,7 +106,6 @@ public class TripleTracker : MonoBehaviour
     // subscribe to the event that detects markers
     private void OnEnable()
     {
-        //Debug.Log("OriginTracker::OnEnable()");
         MLMarkerTracker.OnMLMarkerTrackerResultsFound += OnTrackerResultsFound;
     }
 
@@ -303,7 +315,6 @@ public class TripleTracker : MonoBehaviour
         {
             var controllerPosition = _controllerActions.Position.ReadValue<Vector3>();
             var controllerRotation = _controllerActions.Rotation.ReadValue<Quaternion>();
-            //Debug.Log("OriginTracker Controller: " + controllerPosition + " " + controllerRotation);
 
             try
             {
@@ -325,7 +336,6 @@ public class TripleTracker : MonoBehaviour
                     args.Add(CBORObject.FromObject(relativeRot.z));
                     args.Add(CBORObject.FromObject(relativeRot.w));
 
-
                     var comp = n_root.GetComponent<NOODLESRoot>();
                     if (comp != null)
                     {
@@ -339,10 +349,10 @@ public class TripleTracker : MonoBehaviour
             }
         }
     }
+
     private void HandleOnBumperRelease(InputAction.CallbackContext obj)
     {
         bool bumperDown = obj.ReadValueAsButton();
-        //Debug.Log("OriginTracker The Bumper released " + bumperDown);
 
         try 
         {
@@ -354,8 +364,7 @@ public class TripleTracker : MonoBehaviour
 
                 if (comp != null)
                 {
-                    //Debug.Log("OriginTracker: INVOKE position_set");
-                    comp.invoke_method_by_name("position_set",  args, NoReply);
+                    comp.invoke_method_by_name("position_set", args, NoReply);
                 }                        
             }
         }
@@ -366,10 +375,7 @@ public class TripleTracker : MonoBehaviour
     }
 
     private void OnRequestReply(CBORObject reply) {
-        //Debug.Log("OriginTracker: RQ REPLY" + reply.ToString());
-
         var transform_array = reply["result"];
-
 
         var offset = new Vector3(
             transform_array[0].ToObject<float>(),
@@ -388,8 +394,6 @@ public class TripleTracker : MonoBehaviour
         var n_room_offset = GameObject.FindWithTag("OriginOffsetItem");
         var indicator = GameObject.FindWithTag("CoordinateIndicator");
 
-
-
         if (n_root == null || n_room_offset == null || indicator == null)
         {
             Debug.LogWarning("Unable to find root or root offset nodes, we cannot properly set the origin for this client!");
@@ -399,7 +403,6 @@ public class TripleTracker : MonoBehaviour
         n_root.transform.localPosition = offset;
         n_room_offset.transform.localRotation = rotation;
 
-        // set the indicator as the inverse of this transform
         var tf_a = n_root.transform;
         var tf_b = transform;
 
@@ -407,7 +410,6 @@ public class TripleTracker : MonoBehaviour
         var indicator_rot = Quaternion.Inverse(tf_a.rotation) * tf_b.rotation;
 
         indicator.transform.SetLocalPositionAndRotation(indicator_pos, indicator_rot);
-
     }
 
     private void NoReply(CBORObject reply) {

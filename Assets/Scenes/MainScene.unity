@@ -176,10 +176,10 @@ MonoBehaviour:
     positionOffset: {x: 0, y: 0, z: 0}
     rotationOffset: {x: 0, y: 0, z: 0}
   - id: 1
-    positionOffset: {x: 0, y: 0, z: 0.304}
+    positionOffset: {x: 0, y: 0, z: 0.34}
     rotationOffset: {x: 0, y: 0, z: 0}
   - id: 2
-    positionOffset: {x: 0.304, y: 0, z: 0}
+    positionOffset: {x: 0.34, y: 0, z: 0}
     rotationOffset: {x: 0, y: 0, z: 0}
   scanInterval: 0.1
   holdToStopDuration: 1.5
