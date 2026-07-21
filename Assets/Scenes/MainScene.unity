@@ -169,7 +169,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   trackedObject: {fileID: 1533458883}
-  aruco_id: 1
+  aruco_id: 0
   vrpn_id: Origin
 --- !u!1001 &61763479
 PrefabInstance:
